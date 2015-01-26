@@ -2,7 +2,6 @@
 
 import optparse, sys, os, logging, time 
 from zgc import zgc
-import time
 
 # Constants
 weight_rules = False          # When distributing the unit-count among the rules, should it be weighted by the # of rule occurrences
@@ -104,12 +103,11 @@ def readSentAlign():
             for ppair in phrPairLst:
                 unaligned_edge = False
                 # If the boundary term of source or target phrase has an unaligned word, ignore the phrase-pair
-                # Earlier bug fixed on March '09
                 # Unless the tight-phrase options is set to False
                 if not alignDoD.has_key( str(ppair[0][0]) ) or not revAlignDoD.has_key( str(ppair[1][0]) ) or \
                         not alignDoD.has_key( str(ppair[0][1]) ) or not revAlignDoD.has_key( str(ppair[1][1]) ):
                     if opts.tight_phrases_only: continue
-                    else: unaligned_edge = True                
+                    else: unaligned_edge = True
                 
                 
                 init_phr_pair = (' '.join( [str(x) for x in xrange(ppair[0][0], ppair[0][1]+1) ] ), \
@@ -128,8 +126,7 @@ def readSentAlign():
                 sentInitDoD[tphr_len][ppair] = init_phr_pair
                 strPhrDict[tphr_len][ppair] = init_phr_pair
                 tgtPhraseDict[ppair[1]] = ppair
-                nonTermRuleDoD[ppair[1]] = {}
-                nonTermRuleDoD[ppair[1]][("X__1","X__1")] = 1
+                nonTermRuleDoD[ppair[1]] = {("X__1","X__1"):1}
             computeRightTgtPhr()
             xtractRules()
             #printSentRules()
@@ -165,23 +162,25 @@ def readSentAlign():
     return None
 
 def addLoosePhrases(phr_lst):
-    global alignDoD, revAlignDoD, tgtSentLen, srcSentlen
+    '''Add phrase-pairs with unaligned words on src/tgt boundary'''
+    
+    global alignDoD, revAlignDoD, tgtSentLen, srcSentlen, opts
     full_phr_lst = set(phr_lst)
-    length=[srcSentlen, tgtSentLen]
-    alignDict = [alignDoD, revAlignDoD]
+    st_length=[srcSentlen, tgtSentLen]
+    alignDict = [alignDoD, revAlignDoD]          #dictionary of alignments (src/tgt)
     for tight_ppair in phr_lst:
         curr_lst = set()
         curr_lst.add(tight_ppair)
-        for st_ind in [0,1]:
+        for st_ind in [0,1]:                     #0: src,   1:tgt
             for p_ind,step in enumerate([-1, 1]):
                 new_lst = set()
                 for ppair in curr_lst:
                     j = tight_ppair[st_ind][p_ind] + step
-                    while j >= 0 and j < length[st_ind]:
-                        if alignDict[st_ind].has_key(str(j)):
-                            break
+                    while j >= 0 and j < st_length[st_ind]:
+                        if alignDict[st_ind].has_key(str(j)): break                 #boundary reaches an aligned words 
                         if p_ind == 0: new_phr = (j, ppair[st_ind][1])
                         elif p_ind == 1: new_phr = (ppair[st_ind][0], j)
+                        if abs(new_phr[1] - new_phr[0]) > opts.max_phr_len: break   #length of the new phrase gets larger than max_phr_len
                         if st_ind == 0: new_ppair = (new_phr, ppair[1])
                         elif st_ind == 1: new_ppair = (ppair[0], new_phr)
                         new_lst.add(new_ppair)
@@ -192,6 +191,8 @@ def addLoosePhrases(phr_lst):
     return list(full_phr_lst)
                         
 def resetStructs():
+    '''Clean all data structures'''
+    
     global alingDoD, nonTermRuleDoD, revAlignDoD
     global rightTgtPhraseDict, ruleDict, ruleDoD
     global sentInitDoD, strPhrDict, tgtPhraseDict, basePhrDict
@@ -226,6 +227,12 @@ def computeRightTgtPhr():
     fixUnAlignTgtWords()    
             
 def fixUnAlignTgtWords():
+    '''This function maps each phrase pair to phrase pairs which share the same source side but target sides just varies on left boundary
+       (left boundaries are unaligned tgt words).
+       Fills basePhrDict, a dictionary which maps tight tgt spans (with aligned boundaries) -> a set of phrase pairs 
+          these phrase pairs share the same src side but the tgt sides are different, 
+          tgt sides share the same right boundary (the same as key of dictionary) but left boundary varies (unaligned tgt words)'''
+    
     global tgtSentLen, tgtPhraseDict, sentInitDoD, basePhrDict, strPhrDict
     basePhrDict = {}
     for i in xrange(0, tgtSentLen):
@@ -262,6 +269,7 @@ def printSentRules():
 
 def xtractRules():
     ''' Extract the rules for different phrase lengths (from smallest to longest) '''
+    
     global srcSentlen, tgtSentLen, sentInitDoD, ruleDoD, rightTgtPhraseDict
     for tphr_len in xrange(1, tgtSentLen+1):
         if sentInitDoD.has_key(tphr_len):
@@ -306,7 +314,7 @@ def genRule4Phrase(phrPairStr, (src_tuple, tgt_tuple)):
     else:    ruleCount = 1.0/float(ruleNo)    
     for rule in ppairRulesSet:
         if rule[1].startswith("X__"):
-            nonTermRuleDoD[tgt_tuple][rule] = 1
+            if not opts.full_aligned_rules: nonTermRuleDoD[tgt_tuple][rule] = 1
             continue    #target side does not have any terminal
         if not checkRuleConfigure(rule): continue
         ruleDoD[tgt_tuple][rule] = 1
@@ -326,7 +334,8 @@ def genRule4Phrase(phrPairStr, (src_tuple, tgt_tuple)):
             ruleDoD[ppair[1]] = ruleDoD[tgt_tuple]
         
 def checkRuleConfigure((src_phr, tgt_phr), isNonTerm=False):
-    'Checks if the rule configuration is compatible with the constraints (for both src & tgt sides)'
+    '''Checks if the rule configuration is compatible with the constraints (for both src & tgt sides)'''
+    
     global opts, max_terms
     # source lenght
     src_len = len(src_phr.split())
@@ -426,6 +435,7 @@ def substituteRuleSet(main_rule_lst, sub_ppair_span, isNonTerm = None):
 
 def iterativeMerge(rule, no_x):
     '''Check if begining nonterminals in target side of rule can be merged to create different rules'''
+    
     global alignDoD
     curr_rule = rule
     new_rules = set()
@@ -454,6 +464,7 @@ def iterativeMerge(rule, no_x):
 
 def mergeNonTerms(rule, t_words, min_x, max_x):
     ''' Replacing a list of non-terminals t-words (with max and min nonterminals given) in the given rule '''
+    
     curr_x = "X__"+str(min_x)
     next_x = "X__"+str(max_x)
     s = rule[0].find(curr_x)+5
@@ -493,6 +504,7 @@ def updateNonTerms(phrase, add_x, start_x=0):
 
 def findMaxNonTerm(phrase, s=None, e=None):
     '''Find the index of bigest non-terminal in phrase[s:e] (the whole phase if s or e is not defined)'''
+    
     if s !=None and e != None:
         start_x = phrase.rfind("X__", s, e)
     else: start_x = phrase.rfind("X__")
@@ -503,7 +515,7 @@ def findMaxNonTerm(phrase, s=None, e=None):
     return start_x
         
 def compFeatureCounts(rule):
-    'Convert to lexical rule and find the alignment for the entries in the rule. Also compute feature counts P(s|t), P(t|s), P_w(s|t) and P_w(t|s)'
+    '''Convert to lexical rule and find the alignment for the entries in the rule. Also compute feature counts P(s|t), P(t|s), P_w(s|t) and P_w(t|s)'''
 
     global srcWrds, tgtWrds
     global fAlignDoD, rAlignDoD
@@ -587,7 +599,7 @@ def getAlignIndex(align_str):
 
 
 def getFwrdAlignment(item_indx, s_pos, tPosLst):
-    'Computes the alignment and lexical weights in forward direction'
+    '''Computes the alignment and lexical weights in forward direction'''
 
     alignLst = []
     if alignDoD.has_key(s_pos):
@@ -607,7 +619,7 @@ def getFwrdAlignment(item_indx, s_pos, tPosLst):
 
 
 def getRvrsAlignment(item_indx, t_pos, sPosLst):
-    'Computes the alignment and lexical weights in reverse direction'
+    '''Computes the alignment and lexical weights in reverse direction'''
 
     alignLst = []
     if revAlignDoD.has_key(t_pos):
