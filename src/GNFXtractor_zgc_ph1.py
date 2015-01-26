@@ -1,17 +1,11 @@
 ## This program extracts GNF rules (special type of Synchronous CFG rules) from the word alignments of a parallel corpus ##
 
-import sys
+import optparse, sys, os, logging, time 
 from zgc import zgc
 import time
 
 # Constants
-max_phr_len = 10              # Maximum phrase length
-#tot_lex_term = 4              # Maximum no of lexical terms in Glue rules
-max_non_term = 2              # Maximum no of non-terminals in rules 
-tot_src_terms = 7             # Total no of terms (terminals & non-terminals incl) in source side
-X1_only = False               # Flag for deciding whether to generate one non-termianl or two non-terminal rules
 weight_rules = False          # When distributing the unit-count among the rules, should it be weighted by the # of rule occurrences
-tight_phrases_only = True     # Restrict the rule extraction strictly to tighter phrases
 max_terms = 7
 
 # Global Variables
@@ -39,17 +33,34 @@ fAlignDoD = {}
 rAlignDoD = {}
 
 
-def readSentAlign(spanFile, outFile, tgtFile):
+def readSentAlign():
     'Reads the input phrase span file for src & tgt sentences, alignment and initial phrases'
 
-    global tight_phrases_only, nonTermRuleDoD, ruleDoD
+    global opts, nonTermRuleDoD, ruleDoD
     global ruleDict, ruleIndxCntDict, tgtCntDict, phrPairLst, tgtPhraseDict
     global srcWrds, tgtWrds, srcSentlen, tgtSentLen, rightTgtPhraseDict, sentInitDoD, strPhrDict
+
+    file_indx = opts.file_prefix
+    dDir = opts.datadir
+    oDir = opts.outdir
+            
+    if not dDir.endswith("/"): dDir += "/"
+    if not oDir.endswith("/"): oDir += "/"
+
+    spanFile = dDir + file_indx + '.outspan' 
+    outFile  = oDir + file_indx + '.out'
+    outTgtFile  = oDir + 'tgt.' + file_indx + '.out'
+
     sent_count = 0
     phrLst = []
     aTupLst = []
 
-    print "Reading the span file :", spanFile
+    print "Using the maximum phrase lenght            :", opts.max_phr_len
+    print "Enforcing tight phrase-pairs constraint    :", opts.tight_phrases_only
+    print "Using the source side total terms to be    :", opts.tot_src_terms
+    print "Using the mximum no of non-terminals to be :", opts.max_non_term
+
+    print "Reading the span file                      :", spanFile
     inF = open(spanFile, 'r')
     for line in inF:
         line = line.strip()
@@ -81,10 +92,10 @@ def readSentAlign(spanFile, outFile, tgtFile):
                     revAlignDoD[m[1]][m[0]] = 1
         elif line.startswith('LOG: PHRASES_BEGIN:'): continue
         elif line.startswith('LOG: PHRASES_END:'):    # End of the current sentence; now extract rules from it
-            align_tree = zgc(max_phr_len)
+            align_tree = zgc(opts.max_phr_len)
             phrPairLst = align_tree.getAlignTree(srcSentlen, tgtSentLen, aTupLst)
-            if not tight_phrases_only: phrPairLst = addLoosePhrases(phrPairLst)
-            if max_phr_len >= srcSentlen and not ((0, srcSentlen-1),(0, tgtSentLen-1)) in phrPairLst:
+            if not opts.tight_phrases_only: phrPairLst = addLoosePhrases(phrPairLst)
+            if opts.max_phr_len >= srcSentlen and not ((0, srcSentlen-1),(0, tgtSentLen-1)) in phrPairLst:
                 phrPairLst.append(((0, srcSentlen-1),(0, tgtSentLen-1)))
             sentInitDoD = {}
             tgtPhraseDict = {}
@@ -97,7 +108,7 @@ def readSentAlign(spanFile, outFile, tgtFile):
                 # Unless the tight-phrase options is set to False
                 if not alignDoD.has_key( str(ppair[0][0]) ) or not revAlignDoD.has_key( str(ppair[1][0]) ) or \
                         not alignDoD.has_key( str(ppair[0][1]) ) or not revAlignDoD.has_key( str(ppair[1][1]) ):
-                    if tight_phrases_only: continue
+                    if opts.tight_phrases_only: continue
                     else: unaligned_edge = True                
                 
                 
@@ -147,7 +158,7 @@ def readSentAlign(spanFile, outFile, tgtFile):
             r_alignments = ' ## '.join( rAlignDoD[r_indx].keys() )
             oF.write( "%s ||| %g ||| %s ||| %s\n" % (rule, rule_count, r_alignments, f_alignments) )
 
-    with open(tgtFile, 'w') as tF:
+    with open(outTgtFile, 'w') as tF:
         for tgt in sorted( tgtCntDict.iterkeys() ):
             tF.write( "%s ||| %g\n" % (tgt, tgtCntDict[tgt]) )
 
@@ -200,7 +211,7 @@ def computeRightTgtPhr():
     ''' fill the table rightTgtPhraseDict. For each possible span it keeps the largest 
     subphrase which shares the right boundary on target side. '''
     
-    global rightTgtPhraseDict, tgtSentLen, tgtPhraseDict, sentInitDoD
+    global rightTgtPhraseDict, tgtSentLen, tgtPhraseDict, sentInitDoD, opts
     rightTgtPhraseDict = {}
     for l in xrange(2, tgtSentLen+1):
         for i in xrange(0,tgtSentLen-l+1):
@@ -211,7 +222,7 @@ def computeRightTgtPhr():
                 rightTgtPhraseDict[(i,j)] = rightTgtPhraseDict[(i+1, j)]
             #if (i, j) in rightTgtPhraseDict:
             #    print (i, j), " : ", rightTgtPhraseDict[(i, j)]
-    #if tight_phrases_only: 
+    #if opts.tight_phrases_only: 
     fixUnAlignTgtWords()    
             
 def fixUnAlignTgtWords():
@@ -260,7 +271,7 @@ def xtractRules():
                 genRule4Phrase(sentInitDoD[tphr_len][phr_pair], phr_pair)
 
 def genRule4Phrase(phrPairStr, (src_tuple, tgt_tuple)):
-    global ruleDict, ruleDoD, rightTgtPhraseDict, ppairRulesSet, tgtPhraseDict, basePhrDict, max_non_term
+    global ruleDict, ruleDoD, rightTgtPhraseDict, ppairRulesSet, tgtPhraseDict, basePhrDict, opts
     
     ruleDoD[tgt_tuple] = {}   
     ppairRulesSet = set()
@@ -289,7 +300,7 @@ def genRule4Phrase(phrPairStr, (src_tuple, tgt_tuple)):
     ruleNo = 0
     for rule in ppairRulesSet:
         max_x = findMaxNonTerm(rule[0])
-        if max_x <= max_non_term:
+        if max_x <= opts.max_non_term:
             ruleNo += 1
     if ruleNo == 0: ruleCount = 0
     else:    ruleCount = 1.0/float(ruleNo)    
@@ -316,14 +327,14 @@ def genRule4Phrase(phrPairStr, (src_tuple, tgt_tuple)):
         
 def checkRuleConfigure((src_phr, tgt_phr), isNonTerm=False):
     'Checks if the rule configuration is compatible with the constraints (for both src & tgt sides)'
-    global max_non_term, tot_src_terms, max_terms
+    global opts, max_terms
     # source lenght
     src_len = len(src_phr.split())
-    if src_len > tot_src_terms: return False
+    if src_len > opts.tot_src_terms: return False
     # no of non-terminals
     if isNonTerm and tgt_phr.startswith("X__"): return True
     max_x = findMaxNonTerm(src_phr)
-    if max_x > max_non_term:  return False 
+    if max_x > opts.max_non_term:  return False 
     if src_len - max_x > max_terms: return False
     if len(tgt_phr.split()) - max_x > max_terms+3: return False
     pre_x = False
@@ -343,7 +354,7 @@ def substituteRuleSet(main_rule_lst, sub_ppair_span, isNonTerm = None):
                updating the final main rules by substituting the subphrase with a non-terminal
                returning updated main rules (or None, if it is not possible)'''
     
-    global ppairRulesSet, ruleDoD, nonTermRuleDoD, strPhrDict
+    global ppairRulesSet, ruleDoD, nonTermRuleDoD, strPhrDict, opts
 
     len_tgt_phr = sub_ppair_span[1][1] - sub_ppair_span[1][0] +1
     sub_phr = strPhrDict[len_tgt_phr][sub_ppair_span]                        # retrive subphrase using its span        
@@ -353,7 +364,7 @@ def substituteRuleSet(main_rule_lst, sub_ppair_span, isNonTerm = None):
     
     for main_rule in main_rule_lst:
         max_x = findMaxNonTerm(main_rule[0])
-        if not isNonTerm and max_x >= max_non_term:       # rule cannot have more non-terminal
+        if not isNonTerm and max_x >= opts.max_non_term:       # rule cannot have more non-terminal
             continue
     
         if main_rule[0].startswith(sub_phr[0]): left_bound_src = 0                            # happens at the begining of src side 
@@ -378,7 +389,7 @@ def substituteRuleSet(main_rule_lst, sub_ppair_span, isNonTerm = None):
     
         for rule in local_rule_dict:
             mid_x = findMaxNonTerm(rule[0])
-            if mid_x == 0 or (not isNonTerm and (mid_x+max_x) > max_non_term): continue        # (does not create new rule) or (more than maximum non-terminals)
+            if mid_x == 0 or (not isNonTerm and (mid_x+max_x) > opts.max_non_term): continue        # (does not create new rule) or (more than maximum non-terminals)
         
             #check adjacent non-terminals on src side
             if not isNonTerm and ( (right_non_term and rule[0].endswith("X__"+str(mid_x))) or \
@@ -614,46 +625,22 @@ def getRvrsAlignment(item_indx, t_pos, sPosLst):
 
     return ' '.join(alignLst)
 
-
-def main():
-
-    global tight_phrases_only
-    global tot_src_terms, max_non_term, max_phr_len
-    global X1_only
-    if len(sys.argv) < 4 or len(sys.argv) > 8:
-        print 'Usage: python %s <file_index> <dataDir> <outDir> [max phrase length (def 10)] [Total_terms on Fr side (def 7)] [max non-terminals (def 2)] [True/False]' % (sys.argv[0])
-        print 'Exiting!!\n'
-        sys.exit()
-
-    file_indx = sys.argv[1]
-    dDir = sys.argv[2]
-    oDir = sys.argv[3]
-
-    if len(sys.argv) > 4:
-        max_phr_len = int(sys.argv[4])
-        if max_phr_len < 0: max_phr_len = 200               # all phrase pairs
-        if len(sys.argv) > 5: 
-            tot_src_terms = int(sys.argv[5])
-        if len(sys.argv) > 6: 
-            max_non_term = int(sys.argv[6])        
-        if len(sys.argv) == 8 and sys.argv[7] != 'True' and sys.argv[7] != 'False':
-            print "Last argument should be a boolean True/False indicating tight/loose phrase pairs case"
-            sys.exit(1)
-        if len(sys.argv) == 8 and sys.argv[7] == 'False':   # False relaxes the tight phrase pairs constraint and enables the model to extract rules from loose phrases as well
-            tight_phrases_only = False
-            
-    print "Using the maximum phrse lenght             :", max_phr_len
-    print "Using the French side total terms to be    :", tot_src_terms
-    print "Using the mximum no of non-terminals to be :", max_non_term
-    print "Enforcing tight phrase-pairs constraint    :", tight_phrases_only
-    if not dDir.endswith("/"): dDir += "/"
-    if not oDir.endswith("/"): oDir += "/"
-
-    spanFile = dDir + file_indx + '.outspan'
-    outFile  = oDir + file_indx + '.out'
-    tgtFile  = oDir + 'tgt.' + file_indx + '.out'
-    readSentAlign(spanFile, outFile, tgtFile)
-
-
 if __name__ == '__main__':
-    main()
+    global opts
+    optparser = optparse.OptionParser()
+    optparser.add_option("-d", "--datadir", dest="datadir", default="data", help="data directory (default=data)")
+    optparser.add_option("-o", "--outdir", dest="outdir", default="rules", help="data directory (default=rules)")
+    optparser.add_option("-p", "--prefix", dest="file_prefix", default="1", help="prefix of parallel data files (default=1)")
+    optparser.add_option("-l", "--logfile", dest="log_file", default=None, help="filename for logging output")
+    optparser.add_option("","--tightPhrase", dest="tight_phrases_only", default=False, action="store_true", help="extract just tight-phrases (default=False)")
+    optparser.add_option("","--fullAlignedRules", dest="full_aligned_rules", default=False, action="store_true", help="extract just rules with aligned subphrases (Phrasal-Hiero in (Nguyen and Vogel 2013)) (default=False)")
+    optparser.add_option("", "--maxPhrLen", dest="max_phr_len", default=10, type="int", help="maximum initial phrase length (default=10)")
+    optparser.add_option("", "--totSrcTrms", dest="tot_src_terms", default=7, type="int", help="maximum number of terms in src side of rules (default=7)")
+    optparser.add_option("", "--maxNonTrms", dest="max_non_term", default=2, type="int", help="maximum number of non-terminals in rules (default=2)")
+    (opts, _) = optparser.parse_args()
+
+    if opts.log_file:
+        logging.basicConfig(filename=opts.log_file, filemode='w', level=logging.INFO)
+
+    readSentAlign()
+
