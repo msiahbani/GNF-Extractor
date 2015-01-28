@@ -14,6 +14,7 @@ tot_rules_derived = 0
 X1_only = False                   # Flag for deciding whether to generate one non-termianl or two non-terminal rules
 tightPhrases = True
 tightRules = True
+full_aligned_rules = False
 X__Max = 2
 
 ruleDict = {}
@@ -307,7 +308,7 @@ def iterateInitPhrPairs(iIPP_phr_len, iIPP_s_span, iIPP_t_span):
 
 
 def checkRuleCompatibilityforTgt(cRC_rule, cRC_sub_rule):
-    'Checks if the sub phrase is compatible with the bigger rule (for both src & tgt rules)'
+    'Checks if the sub phrase is compatible with the bigger rule (for tgt rules)'
 
     #cRC_rule_compatible = False
     #cRC_l_pad = ' ' + cRC_sub_rule          # Pad the string with a space on left side
@@ -325,7 +326,7 @@ def checkRuleCompatibilityforTgt(cRC_rule, cRC_sub_rule):
     return False
 
 def checkRuleCompatibilityforSrc(cRC_rule, cRC_sub_rule):
-    'Checks if the sub phrase is compatible with the bigger rule (for both src & tgt rules)'
+    'Checks if the sub phrase is compatible with the bigger rule (for src rules)'
 
     cRC_rule_compatible = False
     cRC_l_pad = ' ' + cRC_sub_rule          # Pad the string with a space on left side
@@ -346,6 +347,7 @@ def getMaxNonTerm(cC_span):
 def checkConstraints(cC_s_span, cC_t_span, cC_sub_src, cC_sub_tgt):
     'Checks if the rules satisfy the filtering constraints; used to balance grammar size'
 
+    global full_aligned_rules
     # Return a default **empty** rule if any of the constraints is not satisifed
     cC_rule = ''
 
@@ -409,6 +411,22 @@ def checkConstraints(cC_s_span, cC_t_span, cC_sub_src, cC_sub_tgt):
 
     if not cC_aligned_terminal:
         return cC_rule
+    
+    #Constraint-6: Both sides have no unaligned subphrases
+    if full_aligned_rules:
+	subPhrLst = []
+	aligned = False
+	for cC_pos in cC_srcTermLst:
+	    if cC_pos.startswith("X__"):
+		if not aligned and len(subPhrLst) > 0:
+		    return cC_rule
+		subPhrLst = []
+		aligned = False
+	    else:
+		subPhrLst.append(cC_pos)
+		if alignDoD.has_key(cC_pos): aligned = True
+	if not aligned and len(subPhrLst) > 0:
+	    return cC_rule	
 
     # If all the constraints are satisfied compose the rule as a tuple and return it
     cC_rule = (cC_s_side, cC_t_side)
@@ -571,9 +589,10 @@ def main():
     global TOT_TERMS
     global X1_only
     global X__Max
-    global tightPhrases, tightRules
+    global tightPhrases, tightRules, full_aligned_rules
     tightPhrases = True
     tightRules = True
+    full_aligned_rules = False
     if len(sys.argv) < 4 or len(sys.argv) > 7:
         print 'Usage: python %s <file_index> <dataDir> <outDir> [Total_terms on Fr side (def 7)] [max nonterm] [1,2,3]' % (sys.argv[0])
         print 'Exiting!!\n'
