@@ -655,4 +655,3 @@ if __name__ == '__main__':
         logging.basicConfig(filename=opts.log_file, filemode='w', level=logging.INFO)
 
     readSentAlign()
-

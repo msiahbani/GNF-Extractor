@@ -1,21 +1,14 @@
-## This program extracts a Synchronous CFG rules from the word alignments of a parallel corpus ##
+## This program extracts GNF rules(special type of Synchronous CFG rules) from the word alignments of a parallel corpus ##
+## It is special case of SCFG extractor for Hiero which just filtered out rules with Non-GNF target side ##
 
-import sys
-import re
-import time
+import optparse, sys, os, logging, time, re
 
 # Constants
-MAX_PHR_LEN = 10                  # Maximum phrase length
-TOT_TERMS = 7                     # Total no of terms (terminals & non-terminals incl) in source rule
 
 # Global Variables
 rule_indx = 1
 tot_rules_derived = 0
-X1_only = False                   # Flag for deciding whether to generate one non-termianl or two non-terminal rules
-tightPhrases = True
 tightRules = True
-full_aligned_rules = False
-X__Max = 2
 
 ruleDict = {}
 unAlignBoundDict = {}
@@ -31,15 +24,21 @@ fAlignDoD = {}
 rAlignDoD = {}
 
 
-def resourceStats():
-    'Returns the CPU time to calculate the usage'
-    return time.time()
-
-
-def readPhraseSpan(spanFile, outFile, tgtFile):
+def readPhraseSpan():
     'Reads the input phrase span file for src & tgt sentences, alignment and initial phrases'
 
     global ruleIndxCntDict, tgtCntDict
+    file_indx = opts.file_prefix
+    dDir = opts.datadir
+    oDir = opts.outdir
+            
+    if not dDir.endswith("/"): dDir += "/"
+    if not oDir.endswith("/"): oDir += "/"
+
+    spanFile = dDir + file_indx + '.outspan' 
+    outFile  = oDir + file_indx + '.out'
+    tgtFile  = oDir + 'tgt.' + file_indx + '.out'
+
     sent_count = 0
     srcWrds = []
     tgtWrds = []
@@ -47,7 +46,12 @@ def readPhraseSpan(spanFile, outFile, tgtFile):
     src_span = []
     tgt_span = []
 
-    print "Reading the span file :", spanFile
+    print "Using the maximum phrase lenght            :", opts.max_phr_len
+    print "Enforcing tight phrase-pairs constraint    :", opts.tight_phrases_only
+    print "Using the source side total terms to be    :", opts.tot_src_terms
+    print "Using the mximum no of non-terminals to be :", opts.max_non_term
+
+    print "Reading the span file                      :", spanFile
     inF = open(spanFile, 'r')
     coveredSents = 0
     for line in inF:
@@ -83,7 +87,7 @@ def readPhraseSpan(spanFile, outFile, tgtFile):
             # Earlier bug fixed on March '09
             if ( not alignDoD.has_key( str(phrLst[0]) ) or not revAlignDoD.has_key( str(phrLst[2]) ) or
                  not alignDoD.has_key( str(phrLst[1]) ) or not revAlignDoD.has_key( str(phrLst[3]) ) ):
-		if tightPhrases: continue
+		if opts.tight_phrases_only: continue
                 if tightRules:
             	    src_span = ' '.join( map( lambda x: str(x), range(phrLst[0], phrLst[1]+1) ) )
             	    tgt_span = ' '.join( map( lambda x: str(x), range(phrLst[2], phrLst[3]+1) ) )
@@ -164,8 +168,9 @@ def isCoverSent(src_len, tgt_len):
 
 def xtractRules():
     '''Extracts the rules from the alignments of a sentence'''
-
-    for xR_phr_len in range(MAX_PHR_LEN, 1, -1):
+    
+    global opts
+    for xR_phr_len in range(opts.max_phr_len, 1, -1):
         if sentInitDoD.has_key(xR_phr_len):
             check4Subphrase(xR_phr_len)
 
@@ -178,7 +183,7 @@ def xtractRules():
                 ruleDict[xR_rule] = 1.0
 #            print '%15s %15s : %g' % (xR_rule[0], xR_rule[1], ruleDict[xR_rule])
     for span_tuple in unAlignBoundDict:
-	if len(span_tuple[0].split()) <= TOT_TERMS:
+	if len(span_tuple[0].split()) <= opts.tot_src_terms:
 		if ruleDict.has_key(span_tuple):
         	        ruleDict[span_tuple] += 1.0
 	        else:
@@ -187,9 +192,7 @@ def xtractRules():
 
 def check4Subphrase(c4Sp_phr_len):
 
-    global TOT_TERMS
-    global X1_only
-    global tot_rules_derived
+    global tot_rules_derived, opts
     for c4Sp_phr_pair in sentInitDoD[c4Sp_phr_len].keys():
         c4Sp_spanTuple = sentInitDoD[c4Sp_phr_len][c4Sp_phr_pair]
         c4Sp_s_span = c4Sp_phr_pair[0]
@@ -203,8 +206,8 @@ def check4Subphrase(c4Sp_phr_len):
         sentFinalDict.clear()
 
         # Constraint: Rules are limited to five non-terminals and terminals on source side
-        # Initial phrase pairs having less than TOT_TERMS (default 5) terms in source side are added with weight 1.0
-        if len(c4Sp_s_span.split()) <= TOT_TERMS:
+        # Initial phrase pairs having less than opts.tot_src_terms (default 7) terms in source side are added with weight 1.0
+        if len(c4Sp_s_span.split()) <= opts.tot_src_terms:
             sentFinalDict[c4Sp_phr_pair] = 1
 
         # Do a breadth first search: search for all possible rules for a given initial phrase pair
@@ -221,7 +224,7 @@ def check4Subphrase(c4Sp_phr_len):
 
             # Constraint-1: Check if the source span already has 2 nonterminals, then do not process it further
 	    nonTerminalPatterns = re.findall(r'X__[0-9]',c4Sp_s_span)
-            if len(nonTerminalPatterns) == X__Max:
+            if len(nonTerminalPatterns) == opts.max_non_term:
                 pass
             # If the source span has 1 non-terminal, but further simplification is not possible
             elif c4Sp_s_span.find('X__1') != -1 and not isRuleDecomposable( srcRuleTerms ):
@@ -229,7 +232,7 @@ def check4Subphrase(c4Sp_phr_len):
             else:
                 iterateInitPhrPairs(c4Sp_sub_phr_len, c4Sp_s_span, c4Sp_t_span)
 
-            if len(c4Sp_s_span.split()) <= TOT_TERMS:
+            if len(c4Sp_s_span.split()) <= opts.tot_src_terms:
                 sentFinalDict[c4Sp_sub_phr_pair] = 0
             c4Sp_junk_considered = sentTempDict.pop(c4Sp_sub_phr_pair)
             c4Sp_rulesLst = []
@@ -347,7 +350,7 @@ def getMaxNonTerm(cC_span):
 def checkConstraints(cC_s_span, cC_t_span, cC_sub_src, cC_sub_tgt):
     'Checks if the rules satisfy the filtering constraints; used to balance grammar size'
 
-    global full_aligned_rules
+    global opts
     # Return a default **empty** rule if any of the constraints is not satisifed
     cC_rule = ''
 
@@ -358,8 +361,8 @@ def checkConstraints(cC_s_span, cC_t_span, cC_sub_src, cC_sub_tgt):
     if cC_XMAX_indx != -1:
         # Check constraint-3: Rules are limited to five non-terminals and terminals on source side
         # Find the difference in length between the source phrase and sub-phrase,
-        # if the length difference is more than TOT_TERMS (default 5), don't add it to the sentTempDict
-        if ( len(cC_s_span.split()) - len(cC_sub_src.split()) + 1 ) > TOT_TERMS:
+        # if the length difference is more than opts.tot_src_terms (default 5), don't add it to the sentTempDict
+        if ( len(cC_s_span.split()) - len(cC_sub_src.split()) + 1 ) > opts.tot_src_terms:
             return cC_rule
 
         # Constraint-4: The source side does **NOT** have two adjacent nonterminals
@@ -413,7 +416,7 @@ def checkConstraints(cC_s_span, cC_t_span, cC_sub_src, cC_sub_tgt):
         return cC_rule
     
     #Constraint-6: Both sides have no unaligned subphrases
-    if full_aligned_rules:
+    if opts.full_aligned_rules:
 	subPhrLst = []
 	aligned = False
 	for cC_pos in cC_srcTermLst:
@@ -583,47 +586,21 @@ def getRvrsAlignment(gRA_tgt_indx, gRA_tgt_pos, gRA_srcPosLst):
     gRA_rule_alignment = ' '.join(gRA_alignLst)
     return gRA_rule_alignment
 
-
-def main():
-
-    global TOT_TERMS
-    global X1_only
-    global X__Max
-    global tightPhrases, tightRules, full_aligned_rules
-    tightPhrases = True
-    tightRules = True
-    full_aligned_rules = False
-    if len(sys.argv) < 4 or len(sys.argv) > 7:
-        print 'Usage: python %s <file_index> <dataDir> <outDir> [Total_terms on Fr side (def 7)] [max nonterm] [1,2,3]' % (sys.argv[0])
-        print 'Exiting!!\n'
-        sys.exit()
-
-    file_indx = sys.argv[1]
-    dDir = sys.argv[2]
-    oDir = sys.argv[3]
-
-    if len(sys.argv) > 4:
-        TOT_TERMS = int(sys.argv[4])
-        if len(sys.argv) >= 6 and (int(sys.argv[5]) >= 10 or int(sys.argv[5] < 1)):
-            print "Last argument should be an int indicating the maximum number of non-terminals"
-            sys.exit(1)
-        if len(sys.argv) >= 6:  # sys.argv[5] specifies the No of non-terminal we can have in the rules 
-            X__Max = int(sys.argv[5])
-	if len(sys.argv) >= 7:
-            if sys.argv[6] > 1:
-	        tightPhrases = False
-            elif sys.argv[6] == 3:
-                tightRules = False
-
-    print "Using the French side total terms to be :", TOT_TERMS
-    if not dDir.endswith("/"): dDir += "/"
-    if not oDir.endswith("/"): oDir += "/"
-
-    spanFile = dDir + file_indx + '.outspan'
-    outFile  = oDir + file_indx + '.out'
-    tgtFile  = oDir + 'tgt.' + file_indx + '.out'
-    readPhraseSpan(spanFile, outFile, tgtFile)
-
-
 if __name__ == '__main__':
-    main()
+    global opts
+    optparser = optparse.OptionParser()
+    optparser.add_option("-d", "--datadir", dest="datadir", default="data", help="data directory (default=data)")
+    optparser.add_option("-o", "--outdir", dest="outdir", default="rules", help="data directory (default=rules)")
+    optparser.add_option("-p", "--prefix", dest="file_prefix", default="1", help="prefix of parallel data files (default=1)")
+    optparser.add_option("-l", "--logfile", dest="log_file", default=None, help="filename for logging output")
+    optparser.add_option("","--tightPhrase", dest="tight_phrases_only", default=False, action="store_true", help="extract just tight-phrases (default=False)")
+    optparser.add_option("","--fullAlignedRules", dest="full_aligned_rules", default=False, action="store_true", help="extract just rules with aligned subphrases (Phrasal-Hiero in (Nguyen and Vogel 2013)) (default=False)")
+    optparser.add_option("", "--maxPhrLen", dest="max_phr_len", default=10, type="int", help="maximum initial phrase length (default=10)")
+    optparser.add_option("", "--totSrcTrms", dest="tot_src_terms", default=7, type="int", help="maximum number of terms in src side of rules (default=7)")
+    optparser.add_option("", "--maxNonTrms", dest="max_non_term", default=2, type="int", help="maximum number of non-terminals in rules (default=2)")
+    (opts, _) = optparser.parse_args()
+
+    if opts.log_file:
+        logging.basicConfig(filename=opts.log_file, filemode='w', level=logging.INFO)
+
+    readPhraseSpan()
