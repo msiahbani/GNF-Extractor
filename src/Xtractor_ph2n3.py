@@ -1,29 +1,26 @@
-# Combined code of phases 2 and 3; replaces SCFGXtractor_ph2.py and SCFGXtractor_ph3.py
 # Identify the source phrases in the given dev/test set and filter the rule file for the source phrases
 # Get the total counts for the target phrases that co-occur with the filtered source phrases and write them in a temp file
+# Filter the phrase file which keeps the lexicalized reordering model (if phrase files exist)
 
 
-import os
-import sys
+import optparse, sys, os, logging, time 
 import heapq
 import math
-import time
 from datetime import timedelta
 #from myTrie import SimpleSuffixTree
 #from extendedTrie import SimpleSuffixTree
 from multiNonTermTrie import SimpleSuffixTree
 
-MAX_PHR_LEN = 10
-TOT_TERMS = 5
 new_trie = None
 srcRuleDict = {}
 tgtCntDict = {}
+phrDict = {}
 
 
 def loadTrie(ruleFile):
     '''Loads the Suffix Trie with rules from ruleFile'''
 
-    global new_trie
+    global new_trie, opts
     prev_src = ''
     iF = open(ruleFile, 'r')
 
@@ -35,7 +32,7 @@ def loadTrie(ruleFile):
         if prev_src != src:
             prev_src = src
             if new_trie is None:
-                new_trie = SimpleSuffixTree(src, TOT_TERMS)
+                new_trie = SimpleSuffixTree(src, opts.tot_src_terms)
             else:
                 new_trie.addText(src)
 
@@ -43,13 +40,23 @@ def loadTrie(ruleFile):
 #    new_trie.printFullTree()
     return None
 
+def convertRule2Phr(rule):
+    '''Convert the rule to phrase format (remove the boundary non-terminals and replace the others with a uniqe token)'''
+
+    srcLst = []
+    src = rule.split()
+    l = len(src)
+    for i,s_tok in enumerate(src):
+        if s_tok.startswith("X__"):
+            if i!=0 and i!=l-1: srcLst.append("NON_TOK")
+        else: srcLst.append(s_tok)
+    return " ".join(srcLst)
 
 def filterRules(dataFile):
     '''Filter the partial rule file for the specified dev/test set before computing p(f|e) and p(e|f)'''
 
-    global new_trie
-    global MAX_PHR_LEN
-    global srcRuleDict
+    global new_trie, opts
+    global srcRuleDict, phrDict
 
     rF = open(dataFile, 'r')
     print 'Filtering rules for file : %s ...\n' % dataFile
@@ -60,7 +67,7 @@ def filterRules(dataFile):
             words = line.split()
 
             for i in range ( len(words) ):
-                for j in range(i, i + MAX_PHR_LEN):
+                for j in range(i, i + opts.max_phr_len):
                     if j >= len(words): break
                     phr = ' '.join( words[i:j+1] )
                     rulesLst = []
@@ -68,8 +75,10 @@ def filterRules(dataFile):
                     # @type new_trie SimpleSuffixTree
                     rulesLst = new_trie.matchPattern(phr)
                     for rule in rulesLst:
-                        if srcRuleDict.has_key(rule[0]): continue
-                        else: srcRuleDict[rule[0]] = 1
+                        srcRuleDict[rule[0]] = 1
+                        if opts.lex_reorder_model:
+                            phr = convertRule2Phr(rule[0])
+                            phrDict[phr] = 1
 
     finally:
         rF.close()
@@ -128,35 +137,45 @@ def updateTgtCnts(tgtFile, tempTgtFile):
         gF.write( "%s ||| %g\n" % (tgt, tgtCntDict[tgt]) )
     gF.close()
 
+def writePhrLRM(phrFile, tempPhrFile):
+    '''write the filtered phrases'''
+
+    global srcRuleDict, phrDict
+    phrFile = open(phrFile, "r")
+    outFile = open(tempPhrFile, 'w')
+    try:
+        for line in phrFile:
+            line = line.strip()
+            (src, tgt, _) = line.split(' ||| ', 2)
+            if src in phrDict:
+                outFile.write( "%s\n" % (line) )
+    finally:
+        phrFile.close()
+        outFile.close()
 
 def main():
-    global TOT_TERMS
-    devFile = sys.argv[1]        # source file of dev/test set
-    file_indx = sys.argv[2]
-    inDir = sys.argv[3]
-    outDir = sys.argv[4]
-    if len(sys.argv) == 6:
-        TOT_TERMS = int(sys.argv[5])
-    if len(sys.argv) == 7:
-        MAX_PHR_LEN = int(sys.argv[6])
+    global opts
 
-    if not inDir.endswith('/'): inDir += '/'
-    if not outDir.endswith('/'): outDir += '/'
+    if not opts.ruledir.endswith('/'): opts.ruledir += '/'
+    if not opts.outdir.endswith('/'): opts.outdir += '/'
 
-    ruleFile = inDir + str(file_indx) + ".out"
-    tgtFile = inDir + "tgt." + str(file_indx) + ".out"
-    tempOutFile = outDir + str(file_indx) + ".out"
-    tempTgtFile = outDir + "tgt." + str(file_indx) + ".out"
-    print ruleFile
-    print tgtFile
-    print tempOutFile
-    print tempTgtFile
+    ruleFile = opts.ruledir + str(opts.file_prefix) + ".out"
+    tgtFile = opts.ruledir + "tgt." + str(opts.file_prefix) + ".out"
+    phrFile = opts.ruledir + "phr." + str(opts.file_prefix) + ".out"
+    tempOutFile = opts.outdir + str(opts.file_prefix) + ".out"
+    tempTgtFile = opts.outdir + "tgt." + str(opts.file_prefix) + ".out"
+    if os.path.isfile(phrFile):
+        opts.lex_reorder_model = True
+        tempPhrFile = opts.outdir + "phr." + str(opts.file_prefix) + ".out"
+    print "Using the maximum phrase lenght            :", opts.max_phr_len
+    print "Using the source side total terms to be    :", opts.tot_src_terms
+    print "Filtering lexicalized reordering model     :", opts.lex_reorder_model
 
     # load the development set phrases to a suffix trie
     loadTrie(ruleFile)
 
     # filter the consolidated rules that match phrases in trie into tempFile
-    filterRules(devFile)
+    filterRules(opts.devFile)
 
     # write the filtered rules (identified earlier by filterRules)
     writeRules(ruleFile, tempOutFile)
@@ -164,7 +183,27 @@ def main():
     # update tgtCntDict with counts and write them to tempTgtFile
     updateTgtCnts(tgtFile, tempTgtFile)
 
+    # write the filtered phrases (identified earlier by filterRules)
+    if opts.lex_reorder_model:
+        writePhrLRM(phrFile, tempPhrFile)
+
 
 if __name__ == "__main__":
+    global opts
+    optparser = optparse.OptionParser()
+    optparser.add_option("-d", "--devFile", dest="devFile", default="dev", help="data (dev/test) file (default=dev)")
+    optparser.add_option("-r", "--ruledir", dest="ruledir", default="rules", help="rule directory (default=rules)")
+    optparser.add_option("-o", "--outdir", dest="outdir", default="temp", help="temporary filtered directory (default=temp)")
+    optparser.add_option("-p", "--prefix", dest="file_prefix", default="1", help="prefix of parallel data files (default=1)")
+    optparser.add_option("-l", "--logfile", dest="log_file", default=None, help="filename for logging output")
+    #optparser.add_option("","--lexReorderingModel", dest="lex_reorder_model", default=False, action="store_true", help="compute lexicalized reordering model for phrases (default=False)")
+    optparser.add_option("", "--maxPhrLen", dest="max_phr_len", default=10, type="int", help="maximum initial phrase length (default=10)")
+    optparser.add_option("", "--totSrcTrms", dest="tot_src_terms", default=7, type="int", help="maximum number of terms in src side of rules (default=7)")
+    (opts, _) = optparser.parse_args()
+    opts.lex_reorder_model = False
+
+    if opts.log_file:
+        logging.basicConfig(filename=opts.log_file, filemode='w', level=logging.INFO)
+
     main()
 
