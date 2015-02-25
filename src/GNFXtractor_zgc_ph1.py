@@ -616,6 +616,7 @@ def updateLRMFeat():
         tgtPhr = " ".join([tgtWrds[int(t_tok)] for t_tok in tgt.split()])
         for s_tok in src.split():
             if s_tok != "NON_TOK": srcLst.append(srcWrds[int(s_tok)])
+            else: srcLst.append(s_tok)
         srcPhr = " ".join(srcLst)
         if (srcPhr, tgtPhr) not in LRMDictL2R:
             LRMDictL2R[(srcPhr, tgtPhr)] = {0:0, 1:0, 2:0}
