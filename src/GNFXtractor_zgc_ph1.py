@@ -139,17 +139,17 @@ def readSentAlign():
             #printSentRules()
             
             # For every extracted rule call the function compFeatureCounts() and compLRMFeature() to:
-            # compLRMFeature():
-            #   i. convert the rule to a phrase (remove non-terminals) and compute L2R and R2L reordering model            
             # compFeatureCounts():
             #   i. convert the word positions in the rules into lexical entries, and
             #   ii. find the alignment for the rule and compute the joint count p(s, t)
+            # compLRMFeature():
+            #   i. convert the rule to a phrase (remove non-terminals) and compute L2R and R2L reordering model            
             
-            for rule in ruleDict.keys(): 
-                compLRMFeature(rule)
+            for rule in ruleDict.keys():
                 compFeatureCounts(rule)
+                if opts.lex_reorder_model: compLRMFeature(rule)
             # Update global LRM
-            updateLRMFeat()
+            if opts.lex_reorder_model: updateLRMFeat()
             # Clear the variables at the end of current sentence
             resetStructs()
             del aTupLst[:]
@@ -173,11 +173,12 @@ def readSentAlign():
         for tgt in sorted( tgtCntDict.iterkeys() ):
             tF.write( "%s ||| %g\n" % (tgt, tgtCntDict[tgt]) )
             
-    with open(outLRMFile, 'w') as lrmF:
-        for rule in sorted( LRMDictL2R.iterkeys() ):
-            l2r = " ".join([str(LRMDictL2R[rule][0]), str(LRMDictL2R[rule][1]), str(LRMDictL2R[rule][2])])
-            r2l = " ".join([str(LRMDictR2L[rule][0]), str(LRMDictR2L[rule][1]), str(LRMDictR2L[rule][2])])
-            lrmF.write( "%s ||| %s ||| %s ||| %s\n" % (rule[0], rule[1], l2r, r2l) )
+    if opts.lex_reorder_model:
+        with open(outLRMFile, 'w') as lrmF:
+            for rule in sorted( LRMDictL2R.iterkeys() ):
+                l2r = " ".join([str(LRMDictL2R[rule][0]), str(LRMDictL2R[rule][1]), str(LRMDictL2R[rule][2])])
+                r2l = " ".join([str(LRMDictR2L[rule][0]), str(LRMDictR2L[rule][1]), str(LRMDictR2L[rule][2])])
+                lrmF.write( "%s ||| %s ||| %s ||| %s\n" % (rule[0], rule[1], l2r, r2l) )
     return None
 
 def addLoosePhrases(phr_lst):
@@ -754,6 +755,7 @@ if __name__ == '__main__':
     optparser.add_option("-l", "--logfile", dest="log_file", default=None, help="filename for logging output")
     optparser.add_option("","--tightPhrase", dest="tight_phrases_only", default=False, action="store_true", help="extract just tight-phrases (default=False)")
     optparser.add_option("","--fullAlignedRules", dest="full_aligned_rules", default=False, action="store_true", help="extract just rules with aligned subphrases (Phrasal-Hiero in (Nguyen and Vogel 2013)) (default=False)")
+    optparser.add_option("","--lexReorderingModel", dest="lex_reorder_model", default=False, action="store_true", help="compute lexicalized reordering model for phrases (default=False)")
     optparser.add_option("", "--maxPhrLen", dest="max_phr_len", default=10, type="int", help="maximum initial phrase length (default=10)")
     optparser.add_option("", "--totSrcTrms", dest="tot_src_terms", default=7, type="int", help="maximum number of terms in src side of rules (default=7)")
     optparser.add_option("", "--maxNonTrms", dest="max_non_term", default=2, type="int", help="maximum number of non-terminals in rules (default=2)")
