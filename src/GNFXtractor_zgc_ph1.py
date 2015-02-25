@@ -18,6 +18,8 @@ tgtSentLen = 0
 ruleDict = {}                 # dictionary of rules for each sentence, ruleDict[(src, tgt)] = estimated rule count (1.0 for initial phrase pairs at the begining)
 phrDictL2R = {}               # dictionary of phrases for each sentence, to keep LRM info: phrDictL2R[(src, tgt)] = 0, 1 or 2 (M:0, S:1, D:2) 
 phrDictR2L = {}               # dictionary of phrases for each sentence, to keep LRM info: phrDictR2L[(src, tgt)] = 0, 1 or 2 (M:0, S:1, D:2)
+LRMDictL2R = {}               # dictionary of phrases to keep LRM info: LRMDictL2R[(src, tgt)] = 0, 1 or 2 (M:0, S:1, D:2) 
+LRMDictR2L = {}               # dictionary of phrases to keep LRM info: LRMDictR2L[(src, tgt)] = 0, 1 or 2 (M:0, S:1, D:2)
 ruleDoD = {}                  # dictionary of rules for each span, ruleDoD[(i, j)] = {(src, tgt):1,...}
 nonTermRuleDoD = {}           # dictionary of rules for each span, which just contains non-terminals on target side
 alignDoD = {}                 # Dict of dict to store fwd alignments
@@ -38,7 +40,7 @@ rAlignDoD = {}
 def readSentAlign():
     'Reads the input phrase span file for src & tgt sentences, alignment and initial phrases'
 
-    global opts, nonTermRuleDoD, ruleDoD
+    global opts, nonTermRuleDoD, ruleDoD, LRMDictL2R, LRMDictR2L
     global ruleDict, ruleIndxCntDict, tgtCntDict, phrPairLst, tgtPhraseDict
     global srcWrds, tgtWrds, srcSentlen, tgtSentLen, rightTgtPhraseDict, sentInitDoD, strPhrDict
 
@@ -50,8 +52,9 @@ def readSentAlign():
     if not oDir.endswith("/"): oDir += "/"
 
     spanFile = dDir + file_indx + '.outspan' 
-    outFile  = oDir + file_indx + '.out'
-    outTgtFile  = oDir + 'tgt.' + file_indx + '.out'
+    outFile = oDir + file_indx + '.out'
+    outTgtFile = oDir + 'tgt.' + file_indx + '.out'
+    outLRMFile = oDir + 'phr.' + file_indx + '.out'
 
     sent_count = 0
     phrLst = []
@@ -135,11 +138,18 @@ def readSentAlign():
             xtractRules()
             #printSentRules()
             
-            # For every extracted rule call the function compFeatureCounts() to:
+            # For every extracted rule call the function compFeatureCounts() and compLRMFeature() to:
+            # compLRMFeature():
+            #   i. convert the rule to a phrase (remove non-terminals) and compute L2R and R2L reordering model            
+            # compFeatureCounts():
             #   i. convert the word positions in the rules into lexical entries, and
             #   ii. find the alignment for the rule and compute the joint count p(s, t)
-            for rule in ruleDict.keys(): compFeatureCounts(rule)            
             
+            for rule in ruleDict.keys(): 
+                compLRMFeature(rule)
+                compFeatureCounts(rule)
+            # Update global LRM
+            updateLRMFeat()
             # Clear the variables at the end of current sentence
             resetStructs()
             del aTupLst[:]
@@ -151,7 +161,7 @@ def readSentAlign():
            
     inF.close()
 
-    # Write the rule counts, forward and reverse alignments to files
+    # Write the rule counts, forward/reverse alignments and LRM to files
     with open(outFile, 'w') as oF:
         for rule in sorted( ruleIndxCntDict.iterkeys() ):
             r_indx, rule_count = ruleIndxCntDict[rule]
@@ -162,7 +172,12 @@ def readSentAlign():
     with open(outTgtFile, 'w') as tF:
         for tgt in sorted( tgtCntDict.iterkeys() ):
             tF.write( "%s ||| %g\n" % (tgt, tgtCntDict[tgt]) )
-
+            
+    with open(outLRMFile, 'w') as lrmF:
+        for rule in sorted( LRMDictL2R.iterkeys() ):
+            l2r = " ".join([str(LRMDictL2R[rule][0]), str(LRMDictL2R[rule][1]), str(LRMDictL2R[rule][2])])
+            r2l = " ".join([str(LRMDictR2L[rule][0]), str(LRMDictR2L[rule][1]), str(LRMDictR2L[rule][2])])
+            lrmF.write( "%s ||| %s ||| %s ||| %s\n" % (rule[0], rule[1], l2r, r2l) )
     return None
 
 def addLoosePhrases(phr_lst):
@@ -213,14 +228,14 @@ def resetStructs():
     revAlignDoD.clear()
     rightTgtPhraseDict.clear()
     ruleDict.clear()
-    phrDictL2R.clear()
-    phrDictR2L.clear()
     ruleDoD.clear()
     sentInitDoD.clear()
     strPhrDict.clear()
     tgtPhraseDict.clear()
     basePhrDict.clear()
     fullTgtPhraseDoD.clear()
+    phrDictL2R.clear()
+    phrDictR2L.clear()
 
 def computeRightTgtPhr():
     ''' fill the table rightTgtPhraseDict. For each possible span it keeps the largest 
@@ -506,6 +521,8 @@ def mergeNonTerms(rule, t_words, min_x, max_x):
     return (" ".join([left_src,right_src]).strip(), " ".join([left_tgt, curr_x, right_tgt]).strip())
             
 def updateNonTerms(phrase, add_x, start_x=0):
+    '''Update non-terminals (from X__(start_x)) by adding add_x to the name of non-terminal'''
+    
     if add_x == 0 or phrase.find("X__") < 0:
         return phrase
     tmpLst = []
@@ -529,57 +546,83 @@ def findMaxNonTerm(phrase, s=None, e=None):
     return start_x
 
 def compLRMFeature(rule):
-    '''Compute the position of target side phrase in compare to nighbour tgt phrases in terms of source side'''
+    '''Compute the position of target side phrase in compare to nighbour tgt phrases (before and after).
+       The position is computed in terms of source side, Monotone (0), Swape (1) or Discontinuous (2).
+       Information is saved in phrDictL2R (or phrDictR2L) for Left-to-right (or R2L).'''
 
-    global fullTgtPhraseDoD, tgtSentLen, srcSentlen, phrDictL2R, phrDictR2L
-    srcLexLst = []
-    tgtLexLst = []
+    global fullTgtPhraseDoD, tgtSentLen, srcSentlen, phrDictL2R, phrDictR2L, srcWrds, tgtWrds
+    srcPosLst = []
+    tgtPosLst = []
+    # Convert the word positions in source side of the rule to corresponding lexemes
     for i,s_tok in enumerate(rule[0].split()):
         if s_tok.startswith('X__'):
-            if i!=0 and i!=len(rule[0].split()):
-                srcLexLst.append("NON_TOK")
-        else: srcLexLst.append(s_tok)
+            if i!=0 and i!=len(rule[0].split())-1:
+                srcPosLst.append("NON_TOK")
+        else: srcPosLst.append(int(s_tok))
+    # Convert the word positions in target side of the rule to corresponding lexemes
     for t_tok in rule[1].split():
         if t_tok.startswith('X__'):
             break
-        tgtLexLst.append(t_tok)
-    tgtPhr = " ".join(tgtLexLst)
-    srcPhr = " ".join(srcLexLst)
+        tgtPosLst.append(int(t_tok))
+        
+    tgtPhr = " ".join([str(i) for i in tgtPosLst])
+    srcPhr = " ".join([str(i) for i in srcPosLst])
+    if (srcPhr, tgtPhr) in phrDictR2L:                ## LRM has been computed for this phr in this sentence
+        return       
     
-    prev_t = tgtLexLst[0] - 1
-    phrDictL2R[(srcPhr, tgtPhr)] = {}
+    # Compute L2R lexicalized reordering model
+    prev_t = tgtPosLst[0] - 1
+    l2r = {}
     while prev_t > -1:
-        if (prev_t, tgtLexLst[0]-1) in fullTgtPhraseDoD:
-            for src in fullTgtPhraseDoD[(prev_t, tgtLexLst[0]-1)]:
-                if src[1] == srcLexLst[0]-1:        ## Monotone
-                    phrDictL2R[(srcPhr, tgtPhr)][0] = 1
-                elif src[0] == srcLexLst[-1]+1:     ## Swape
-                    phrDictL2R[(srcPhr, tgtPhr)][1] = 1
+        if (prev_t, tgtPosLst[0]-1) in fullTgtPhraseDoD:
+            for src in fullTgtPhraseDoD[(prev_t, tgtPosLst[0]-1)]:
+                if src[1] == srcPosLst[0]-1:        ## Monotone
+                    l2r[0] = 1
+                elif src[0] == srcPosLst[-1]+1:     ## Swape
+                    l2r[1] = 1
             #break     ## word level LRM (but considering unaligned word)
                       ## remove break -> phrase LRM
         prev_t -= 1
     ## compare to <s>
-    if tgtLexLst[0] == 0 and srcLexLst[0] == 0: phrDictL2R[(srcPhr, tgtPhr)][0] = 1
-    
-    if len(phrDictL2R[(srcPhr, tgtPhr)]) == 0: phrDictL2R[(srcPhr, tgtPhr)][2] = 1    ## Discontinuous
-    
-    next_t = tgtLexLst[-1] + 1
-    phrDictR2L[(srcPhr, tgtPhr)] = {}
+    if tgtPosLst[0] == 0 and srcPosLst[0] == 0: l2r[0] = 1
+    if len(l2r) == 0: l2r[2] = 1    ## Discontinuous
+    phrDictL2R[(srcPhr, tgtPhr)] = l2r
+        
+    # Compute R2L lexicalized reordering model
+    next_t = tgtPosLst[-1] + 1
+    r2l = {}
     while next_t < tgtSentLen:
-        if (tgtLexLst[-1]+1, next_t) in fullTgtPhraseDoD:
-            for src in fullTgtPhraseDoD[(prev_t, tgtLexLst[0]-1)]:
-                if src[0] == srcLexLst[-1]+1:        ## Monotone
-                    phrDictR2L[(srcPhr, tgtPhr)][0] = 1
-                elif src[1] == srcLexLst[0]-1:       ## Swape
-                    phrDictR2L[(srcPhr, tgtPhr)][1] = 1
+        if (tgtPosLst[-1]+1, next_t) in fullTgtPhraseDoD:
+            for src in fullTgtPhraseDoD[(tgtPosLst[-1]+1, next_t)]:
+                if src[0] == srcPosLst[-1]+1:        ## Monotone
+                    r2l[0] = 1
+                elif src[1] == srcPosLst[0]-1:       ## Swape
+                    r2l[1] = 1
             #break     ## word level LRM (but considering unaligned word)
                        ## remove break -> phrase LRM
         next_t += 1    
-    ## compare to <s>
-    if tgtLexLst[-1] == tgtSentLen-1 and srcLexLst[-1] == srcSentlen-1: phrDictR2L[(srcPhr, tgtPhr)][0] = 1
-        
-    if len(phrDictR2L[(srcPhr, tgtPhr)]) == 0: phrDictR2L[(srcPhr, tgtPhr)][2] = 1    ## Discontinuous
+    ## compare to <\s>
+    if tgtPosLst[-1] == tgtSentLen-1 and srcPosLst[-1] == srcSentlen-1: r2l[0] = 1
+    if len(r2l) == 0: r2l[2] = 1    ## Discontinuous
+    phrDictR2L[(srcPhr, tgtPhr)] = r2l
+
+def updateLRMFeat():
+    ''' Updates LRM feats for all phrases of the current sentence '''
     
+    global phrDictL2R, phrDictR2L, LRMDictL2R, LRMDictR2L, srcWrds, tgtWrds
+    for (src, tgt) in phrDictL2R:
+        srcLst = []
+        tgtPhr = " ".join([tgtWrds[int(t_tok)] for t_tok in tgt.split()])
+        for s_tok in src.split():
+            if s_tok != "NON_TOK": srcLst.append(srcWrds[int(s_tok)])
+        srcPhr = " ".join(srcLst)
+        if (srcPhr, tgtPhr) not in LRMDictL2R:
+            LRMDictL2R[(srcPhr, tgtPhr)] = {0:0, 1:0, 2:0}
+            LRMDictR2L[(srcPhr, tgtPhr)] = {0:0, 1:0, 2:0}
+        for k in LRMDictL2R[(srcPhr, tgtPhr)]:
+            LRMDictL2R[(srcPhr, tgtPhr)][k] += phrDictL2R[(src, tgt)].get(k, 0)
+            LRMDictR2L[(srcPhr, tgtPhr)][k] += phrDictR2L[(src, tgt)].get(k, 0)
+            
 def compFeatureCounts(rule):
     '''Convert to lexical rule and find the alignment for the entries in the rule. Also compute feature counts P(s|t), P(t|s), P_w(s|t) and P_w(t|s)'''
 
@@ -641,12 +684,12 @@ def updateRuleCount(mc_src, mc_tgt, rule):
     ''' Updates rule and target counts '''
 
     global rule_indx, ruleDict, ruleIndxCntDict, tgtCntDict
-    if not tgtCntDict.has_key(mc_tgt):
+    if not mc_tgt in tgtCntDict:
         tgtCntDict[mc_tgt] = 0
     tgtCntDict[mc_tgt] += ruleDict[rule]
 
     mc_key = mc_src + ' ||| ' + mc_tgt              # ' ||| ' is the delimiter separating items in the key/value
-    if ruleIndxCntDict.has_key(mc_key):
+    if mc_key in ruleIndxCntDict:
         curr_rindx, curr_cnt = ruleIndxCntDict[mc_key]
         ruleIndxCntDict[mc_key] = ( curr_rindx, curr_cnt + ruleDict[rule] )
     else:
@@ -654,7 +697,6 @@ def updateRuleCount(mc_src, mc_tgt, rule):
         curr_rindx = rule_indx
         rule_indx += 1
     return curr_rindx
-
 
 def getAlignIndex(align_str):
 
