@@ -210,7 +210,7 @@ sub step_2 {
     #writeCmd2File($ph2a_scr, $ph2a_cmd);
 
     for (my $i=1; $i<=$tot_files; $i++) {
-        my $ph2a_cmd = "$Python $codeDir/Xtractor_ph2n3.py $currset_src $i $rules_dir $rules_dir/$currset-temp $fr_terms";
+        my $ph2a_cmd = "$Python $codeDir/Xtractor_ph2n3.py -d $currset_src -p $i -r $rules_dir -o $rules_dir/$currset-temp --totSrcTrms=$fr_terms --maxPhrLen=$max_phr_len";
         $ph2a_scr = "$scrptDir/$set.phase2.$i.sh";
         writeCmd2File($ph2a_scr, $ph2a_cmd);
         safeSystem("qsub -l mem=8gb,walltime=3:00:00 -W depend=afterok:$step1_jobs -N $set-phase2a $log_n_notify $ph2a_scr >& $ph2a_scr.$i.log");
