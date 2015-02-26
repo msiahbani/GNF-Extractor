@@ -138,7 +138,7 @@ def mergeTgtCounts(fileLst, tgtFile):
     for fH in fHLst:
         fH.close()
     oF.close()
-    print( "Total # of rules : %d" % (total_rules) )
+    print( "Total # of tgt rules : %d" % (total_rules) )
 
 
 def read_n_merge(fileLst, outFile1, outFile2):
@@ -374,6 +374,11 @@ def mergePhrCounts(fileLst, phrFile):
 
         heapq.heapify(candLst)
         (phr, l2r, r2l, indxLst) = heapq.heappop(candLst)
+        ## double check counts
+        assert(sum(l2r)==sum(r2l)), ('l2r and r2l counts should be the same, phr: %s' %phr)
+        ## compute probabilty distribution of orientations based on counts using maximum likelihood principle
+        l2r = computeLRM(l2r)
+        r2l = computeLRM(r2l)
         oF.write( "%s ||| %s ||| %s\n" % (phr, " ".join([str(i) for i in l2r]), " ".join([str(i) for i in r2l])) )
         total_phrs += 1
         phrDict.pop(phr)
@@ -384,6 +389,11 @@ def mergePhrCounts(fileLst, phrFile):
         fH.close()
     oF.close()
     print( "Total # of phrases : %d" % (total_phrs) )
+
+def computeLRM(countLst):
+    '''Given the counts, it computes probabilty distribution of orientations'''
+    tot = sum(countLst)
+    return [float(i)/tot for i in countLst]
 
 def main():
 
