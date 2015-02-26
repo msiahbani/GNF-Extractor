@@ -193,11 +193,11 @@ def main():
 if __name__ == "__main__":
     global opts
     optparser = optparse.OptionParser()
-    optparser.add_option("-f", "--sentFile", dest="sentfile", default=None, help="data file for filtering (default=None)")
-    optparser.add_option("-s", "--sentdir", dest="sentdir", default="sent", help="directory of filter files (default=sent)")
-    optparser.add_option("-r", "--ruleFile", dest="rulefile", default=None, help="rule file (default=None)")
-    optparser.add_option("", "--outfile", dest="filterfile", default="rules", help="filtered directory (default=rules)")
-    optparser.add_option("-o", "--outdir", dest="filterdir", default="rules", help="filtered directory (default=rules)")
+    optparser.add_option("-sf", "--sentfile", dest="sentfile", default=None, help="data file for filtering (default=None)")
+    optparser.add_option("-sd", "--sentdir", dest="sentdir", default="sent", help="directory of filter files (default=sent)")
+    optparser.add_option("-r", "--rulefile", dest="rulefile", default=None, help="rule file (default=None)")
+    optparser.add_option("-of", "--outfile", dest="filterfile", default="rules", help="filtered directory (default=rules)")
+    optparser.add_option("-od", "--outdir", dest="filterdir", default="rules", help="filtered directory (default=rules)")
     optparser.add_option("-p", "--index", dest="file_index", default=None, help="index of filter data files (default=None)")
     optparser.add_option("-l", "--logfile", dest="log_file", default=None, help="filename for logging output")
     optparser.add_option("","--lrmFile", dest="lrmfile", default=None, help="lexicalized reordering model file (default=None)")
