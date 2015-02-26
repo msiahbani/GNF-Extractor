@@ -12,6 +12,7 @@ candLst = []
 lexProbDict = {}
 ruleDict = {}
 tgtDict = {}
+phrDict = {}
 
 
 def loadLexProbDistrib(lexDFile):
@@ -320,6 +321,69 @@ def calcLexProb(ruleT, align_indx, align_direction):
 
     return lex_prob
 
+def mergePhrCounts(fileLst, phrFile):
+    '''Read LRM counts from individual phrase files and merge counts on the fly'''
+
+    global phrDict
+    total_phrs = 0
+    candLst = []
+    fileTrackLst = [ 1 for file in fileLst ]
+    stop_iteration = False
+
+    print "Reading phraes and merging their LRM counts ..."
+    fHLst = [ open(file, 'r') for file in fileLst ]
+    oF = open(phrFile, 'w')
+    while True:
+        stop_iteration = True
+        for f_track in fileTrackLst:
+            if f_track != 9:
+                stop_iteration = False
+                break
+
+        if stop_iteration:
+            break
+
+        for indx, f_track in enumerate( fileTrackLst ):
+            if f_track == 0 or f_track == 9:
+                continue
+
+            fileTrackLst[indx] = 0
+            line = fHLst[indx].readline()
+            line = line.strip()
+            if line == '':
+                fileTrackLst[indx] = 9          # Set 9 if 'EOF' is reached
+                continue
+
+            (src, tgt, l2r_cnt, r2l_cnt) = line.split(' ||| ')
+            l2r = [float(i) for i in l2r_cnt.strip().split()]
+            r2l = [float(i) for i in r2l_cnt.strip().split()]
+            phr = " ||| ".join([src, tgt])   
+            if phr in phrDict:
+                for indx1, cand in enumerate( candLst ):
+                    if cand[0] == phr:
+                        l2r_new = [cand[1][i] + l2r[i] for i in range(3)]
+                        r2l_new = [cand[2][i] + r2l[i] for i in range(3)]
+                        indxLst = cand[3] + [indx]
+                        candLst[indx1] = (phr, l2r_new, r2l_new, indxLst)
+                        break
+            else:
+                phrDict[phr] = 1
+                candLst.append( (phr, l2r, r2l, [indx]) )
+
+        if len(candLst) == 0: continue
+
+        heapq.heapify(candLst)
+        (phr, l2r, r2l, indxLst) = heapq.heappop(candLst)
+        oF.write( "%s ||| %s ||| %s\n" % (phr, " ".join([str(i) for i in l2r]), " ".join([str(i) for i in r2l])) )
+        total_phrs += 1
+        phrDict.pop(phr)
+        for indx1 in indxLst:
+            fileTrackLst[indx1] = 1
+
+    for fH in fHLst:
+        fH.close()
+    oF.close()
+    print( "Total # of phrases : %d" % (total_phrs) )
 
 def main():
 
@@ -346,18 +410,28 @@ def main():
     if not outDir.endswith('/'): outDir += '/'
     fileLst = []
     tgtFileLst = []
+    phrFileLst = []
+    lexicalizedReorderingFlag = False
     for file in os.listdir(inDir):
+        is_tgt_file = False
+        is_phr_file = False
         if file.startswith("tgt"): is_tgt_file = True
-        else: is_tgt_file = False
+        elif file.startswith("phr"): 
+            is_phr_file = True
+            lexicalizedReorderingFlag = True
 
         file = inDir + file
         if os.path.isfile(file):
             if is_tgt_file: tgtFileLst.append(file)
+            elif is_phr_file: phrFileLst.append(file)
             else: fileLst.append(file)
 
     outFile1 = outDir + 'rules_cnt_align.out'
     outFile2 = outDir + 'rules_cnt_lprob.out'
     tgtFile = outDir + 'tgt_rules.all.out'
+    if lexicalizedReorderingFlag: 
+        phrFile = outDir + 'phr_lrm.all.out'
+        mergePhrCounts(phrFileLst, phrFile)
 
     mergeTgtCounts(tgtFileLst, tgtFile)
 
