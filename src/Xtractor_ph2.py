@@ -1,12 +1,14 @@
 # Merge the filtered rule files and consolidate their counts
 # Also compute forward & reverse lexical probs
 
-import os
+import os, math
 import sys
 import heapq
 
 
 # Global variables
+min_lprob = -13.8155        # for log (natural)
+max_lprob = -0.000100005
 null_term = ''
 candLst = []
 lexProbDict = {}
@@ -391,9 +393,17 @@ def mergePhrCounts(fileLst, phrFile):
     print( "Total # of phrases : %d" % (total_phrs) )
 
 def computeLRM(countLst):
-    '''Given the counts, it computes probabilty distribution of orientations'''
+    '''Given the counts, it computes probabilty distribution of orientations (log probability)'''
     tot = sum(countLst)
-    return [float(i)/tot for i in countLst]
+    probLst = []
+    for c in countLst:
+        if c == 0:        # use min_lprob if c is zero
+            p = min_lprob
+        else:
+            if c == tot: p = max_lprob    # use max_lprob if prob = 1 
+            else: p = math.log( float(c)/ tot )
+        probLst.append(p)
+    return probLst
 
 def main():
 

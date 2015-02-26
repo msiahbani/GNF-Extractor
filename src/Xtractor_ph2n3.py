@@ -7,8 +7,6 @@ import optparse, sys, os, logging, time
 import heapq
 import math
 from datetime import timedelta
-#from myTrie import SimpleSuffixTree
-#from extendedTrie import SimpleSuffixTree
 from multiNonTermTrie import SimpleSuffixTree
 
 new_trie = None
