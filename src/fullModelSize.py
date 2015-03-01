@@ -1,6 +1,6 @@
 ## The SCFG rules of Hiero systems are typically learnt for several smaller sets of initial phrase pairs. ##
 ## These rules are then filtered for the tuning/test set, whose features (probabilities) are computed. ##
-## Thus the full (without filtering) model size is neven known. ##
+## Thus the full (without filtering) model size is never known. ##
 ## This program finds the full model size without building it. ##
 
 import os
@@ -19,6 +19,7 @@ def read_n_merge(fileLst):
     global ruleDict
     global candLst
     candLst = []
+    ruleDict = {}
     total_rules = 0
     fileTrackLst = [ 1 for file in fileLst ]
     stop_iteration = False
@@ -72,18 +73,22 @@ def main():
 
     inDir = sys.argv[1]
     if not inDir.endswith('/'): inDir += '/'
-    fileLst = []
+    ruleFileLst = []
+    phrFileLst = []
     for file in os.listdir(inDir):
-        if file.startswith("tgt"): is_tgt_file = True
-        else: is_tgt_file = False
+        file_path = inDir + file
+        if os.path.isfile(file_path):
+            if file.startswith("tgt"): is_tgt_file = True
+            elif file.startswith("phr"): phrFileLst.append(file_path)  
+            else:   rulefileLst.append(file_path)
 
-        file = inDir + file
-        if os.path.isfile(file):
-            if not is_tgt_file: fileLst.append(file)
 
-    sys.stderr.write( "Total grammar files found: %d\n" % (len(fileLst)) )
+    sys.stderr.write( "Total grammar files found: %d\n" % (len(ruleFileLst)) )
     t_beg = time.time()
-    read_n_merge(fileLst)
+    read_n_merge(ruleFileLst)
+    if len(phrFileLst) > 0:
+        sys.stderr.write( "Total discontinuous phrase files found: %d\n" % (len(ruleFileLst)) )
+        read_n_merge(phrFileLst)
     sys.stderr.write( "Total time taken         : %g\n" % (time.time() - t_beg) )
 
 
