@@ -20,6 +20,7 @@ phrDictL2R = {}               # dictionary of phrases for each sentence, to keep
 phrDictR2L = {}               # dictionary of phrases for each sentence, to keep LRM info: phrDictR2L[(src, tgt)] = 0, 1 or 2 (M:0, S:1, D:2)
 LRMDictL2R = {}               # dictionary of phrases to keep LRM info: LRMDictL2R[(src, tgt)] = 0, 1 or 2 (M:0, S:1, D:2) 
 LRMDictR2L = {}               # dictionary of phrases to keep LRM info: LRMDictR2L[(src, tgt)] = 0, 1 or 2 (M:0, S:1, D:2)
+tgtPhrCntDict = {}            # dictionary of tgt phrases (w/o non-terminals) to keep counts of tgt phrases
 ruleDoD = {}                  # dictionary of rules for each span, ruleDoD[(i, j)] = {(src, tgt):1,...}
 nonTermRuleDoD = {}           # dictionary of rules for each span, which just contains non-terminals on target side
 alignDoD = {}                 # Dict of dict to store fwd alignments
@@ -40,7 +41,7 @@ rAlignDoD = {}
 def readSentAlign():
     'Reads the input phrase span file for src & tgt sentences, alignment and initial phrases'
 
-    global opts, nonTermRuleDoD, ruleDoD, LRMDictL2R, LRMDictR2L
+    global opts, nonTermRuleDoD, ruleDoD, LRMDictL2R, LRMDictR2L, tgtPhrCntDict
     global ruleDict, ruleIndxCntDict, tgtCntDict, phrPairLst, tgtPhraseDict
     global srcWrds, tgtWrds, srcSentlen, tgtSentLen, rightTgtPhraseDict, sentInitDoD, strPhrDict
 
@@ -55,6 +56,7 @@ def readSentAlign():
     outFile = oDir + file_indx + '.out'
     outTgtFile = oDir + 'tgt.' + file_indx + '.out'
     outLRMFile = oDir + 'phr.' + file_indx + '.out'
+    outLRMTgtFile = oDir + 'phr.tgt.' + file_indx + '.out'
 
     sent_count = 0
     phrLst = []
@@ -148,8 +150,9 @@ def readSentAlign():
             for rule in ruleDict.keys():
                 compFeatureCounts(rule)
                 if opts.lex_reorder_model: compLRMFeature(rule)
+            
             # Update global LRM
-            if opts.lex_reorder_model: updateLRMFeat()
+            if opts.lex_reorder_model:    updateLRMFeat()
             # Clear the variables at the end of current sentence
             resetStructs()
             del aTupLst[:]
@@ -176,9 +179,15 @@ def readSentAlign():
     if opts.lex_reorder_model:
         with open(outLRMFile, 'w') as lrmF:
             for rule in sorted( LRMDictL2R.iterkeys() ):
-                l2r = " ".join([str(LRMDictL2R[rule][0]), str(LRMDictL2R[rule][1]), str(LRMDictL2R[rule][2])])
-                r2l = " ".join([str(LRMDictR2L[rule][0]), str(LRMDictR2L[rule][1]), str(LRMDictR2L[rule][2])])
+                l2r = ' '.join( map( lambda x: str(LRMDictL2R[rule][x]), range(3) ) )
+                r2l = ' '.join( map( lambda x: str(LRMDictR2L[rule][x]), range(3) ) )
                 lrmF.write( "%s ||| %s ||| %s ||| %s\n" % (rule[0], rule[1], l2r, r2l) )
+        with open(outLRMTgtFile, 'w') as lrmTF:
+            for tgt in sorted( tgtPhrCntDict.iterkeys() ):
+                #tgtCnt = sum( map( lambda x: tgtPhrCntDict[tgt][x], range(3) ) )
+                l2r = ' '.join( map( lambda x: str(tgtPhrCntDict[tgt][x]) , range(3) ) )
+                r2l = ' '.join( map( lambda x: str(tgtPhrCntDict[tgt][x]) , range(3,6) ) )
+                lrmTF.write( "%s ||| %s ||| %s\n" % (tgt, l2r, r2l) )
     return None
 
 def addLoosePhrases(phr_lst):
@@ -610,7 +619,7 @@ def compLRMFeature(rule):
 def updateLRMFeat():
     ''' Updates LRM feats for all phrases of the current sentence '''
     
-    global phrDictL2R, phrDictR2L, LRMDictL2R, LRMDictR2L, srcWrds, tgtWrds
+    global phrDictL2R, phrDictR2L, LRMDictL2R, LRMDictR2L, srcWrds, tgtWrds, tgtPhrCntDict
     for (src, tgt) in phrDictL2R:
         srcLst = []
         tgtPhr = " ".join([tgtWrds[int(t_tok)] for t_tok in tgt.split()])
@@ -621,9 +630,13 @@ def updateLRMFeat():
         if (srcPhr, tgtPhr) not in LRMDictL2R:
             LRMDictL2R[(srcPhr, tgtPhr)] = {0:0, 1:0, 2:0}
             LRMDictR2L[(srcPhr, tgtPhr)] = {0:0, 1:0, 2:0}
+        if tgtPhr not in tgtPhrCntDict: tgtPhrCntDict[tgtPhr] = {0:0, 1:0, 2:0, 3:0, 4:0, 5:0}
         for k in LRMDictL2R[(srcPhr, tgtPhr)]:
             LRMDictL2R[(srcPhr, tgtPhr)][k] += phrDictL2R[(src, tgt)].get(k, 0)
             LRMDictR2L[(srcPhr, tgtPhr)][k] += phrDictR2L[(src, tgt)].get(k, 0)
+            # update the tgt count
+            tgtPhrCntDict[tgtPhr][k] += phrDictL2R[(src, tgt)].get(k, 0)
+            tgtPhrCntDict[tgtPhr][k+3] += phrDictR2L[(src, tgt)].get(k, 0)
             
 def compFeatureCounts(rule):
     '''Convert to lexical rule and find the alignment for the entries in the rule. Also compute feature counts P(s|t), P(t|s), P_w(s|t) and P_w(t|s)'''

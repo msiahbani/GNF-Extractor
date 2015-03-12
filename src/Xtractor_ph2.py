@@ -327,6 +327,7 @@ def mergePhrCounts(fileLst, phrFile):
     '''Read LRM counts from individual phrase files and merge counts on the fly'''
 
     global phrDict
+    phrDict = {}
     total_phrs = 0
     candLst = []
     fileTrackLst = [ 1 for file in fileLst ]
@@ -379,8 +380,8 @@ def mergePhrCounts(fileLst, phrFile):
         ## double check counts
         assert(sum(l2r)==sum(r2l)), ('l2r and r2l counts should be the same, phr: %s' %phr)
         ## compute probabilty distribution of orientations based on counts using maximum likelihood principle
-        l2r = computeLRM(l2r)
-        r2l = computeLRM(r2l)
+        #l2r = computeLRM(l2r)
+        #r2l = computeLRM(r2l)
         oF.write( "%s ||| %s ||| %s\n" % (phr, " ".join([str(i) for i in l2r]), " ".join([str(i) for i in r2l])) )
         total_phrs += 1
         phrDict.pop(phr)
@@ -404,6 +405,98 @@ def computeLRM(countLst):
             else: p = math.log( float(c)/ tot )
         probLst.append(p)
     return probLst
+
+def mergeTgtPhrCounts(fileLst, tgtPhrFile):
+    '''Read target_phrase counts from individual files and merge counts on the fly'''
+
+    global tgtPhrDict
+    tgtPhrDict = {}
+    total_rules = 0
+    candLst = []
+    fileTrackLst = [ 1 for file in fileLst ]
+    stop_iteration = False
+
+    print "Reading target phrases and merging their counts ..."
+    fHLst = [ open(file, 'r') for file in fileLst ]
+    oF = open(tgtPhrFile, 'w')
+    while True:
+        stop_iteration = True
+        for f_track in fileTrackLst:
+            if f_track != 9:
+                stop_iteration = False
+                break
+
+        if stop_iteration:
+            break
+
+        for indx, f_track in enumerate( fileTrackLst ):
+            if f_track == 0 or f_track == 9:
+                continue
+
+            fileTrackLst[indx] = 0
+            line = fHLst[indx].readline()
+            line = line.strip()
+            if line == '':
+                fileTrackLst[indx] = 9          # Set 9 if 'EOF' is reached
+                continue
+
+            (tgt, l2r, r2l) = line.split(' ||| ')
+            l2r = map(lambda x: float(x), l2r.split())
+            r2l = map(lambda x: float(x), r2l.split())
+
+            if tgtPhrDict.has_key(tgt):
+                for indx1, cand in enumerate( candLst ):
+                    if cand[0] == tgt:
+                        l2r_new = [cand[1][i] + l2r[i] for i in range(3)]
+                        r2l_new = [cand[2][i] + r2l[i] for i in range(3)]
+                        indxLst = cand[-1] + [indx]
+                        candLst[indx1] = (tgt, l2r_new, r2l_new, indxLst)
+                        break
+            else:
+                tgtPhrDict[tgt] = 1
+                candLst.append( (tgt, l2r, r2l, [indx]) )
+
+        if len(candLst) == 0: continue
+
+        heapq.heapify(candLst)
+        (tgt, l2r, r2l, indxLst) = heapq.heappop(candLst)
+        l2r = ' '.join( map(lambda x: str(x), l2r))
+        r2l = ' '.join( map(lambda x: str(x), r2l))
+        oF.write( "%s ||| %s ||| %s\n" % (tgt, l2r, r2l) )
+        total_rules += 1
+        tgtPhrDict.pop(tgt)
+        for indx1 in indxLst:
+            fileTrackLst[indx1] = 1
+
+    for fH in fHLst:
+        fH.close()
+    oF.close()
+    print( "Total # of tgt phrases : %d" % (total_rules) )
+
+def mergeCounts(fileLst, cntFile):
+    '''Read individual count files and get summation'''
+
+    print "Reading counts ..."
+    fHLst = [ open(file, 'r') for file in fileLst ]
+    oF = open(cntFile, 'w')
+    L2R = [0, 0, 0]
+    R2L = [0, 0, 0]
+    totCnt = 0
+    for inF in fHLst:
+        for line in inF:
+            line = line.strip()
+            (c, l2r, r2l) = line.split(" ||| ")
+            totCnt += float(c)
+            for i, c in enumerate(l2r.split()):
+               L2R[i] += float(c)
+            for i, c in enumerate(r2l.split()):
+               R2L[i] += float(c)
+    assert (sum(L2R) == totCnt and sum(R2L) == totCnt), "phrase counts are not compatible"
+
+    
+    l2r = ' '.join( map(lambda x: str(x), L2R))
+    r2l = ' '.join( map(lambda x: str(x), R2L))
+    oF.write( "%g ||| %s ||| %s\n" % (totCnt, l2r, r2l) )
 
 def main():
 
@@ -430,27 +523,29 @@ def main():
     if not outDir.endswith('/'): outDir += '/'
     fileLst = []
     tgtFileLst = []
+    cntFileLst = []
+    tgtPhrFileLst = []
     phrFileLst = []
     lexicalizedReorderingFlag = False
     for file in os.listdir(inDir):
-        is_tgt_file = False
-        is_phr_file = False
-        if file.startswith("tgt"): is_tgt_file = True
-        elif file.startswith("phr"): 
-            is_phr_file = True
-            lexicalizedReorderingFlag = True
-
-        file = inDir + file
-        if os.path.isfile(file):
-            if is_tgt_file: tgtFileLst.append(file)
-            elif is_phr_file: phrFileLst.append(file)
-            else: fileLst.append(file)
-
+        pathFile = inDir + file
+        if os.path.isfile(pathFile):
+            if file.startswith("tgt"):        tgtFileLst.append(pathFile)
+            elif file.startswith("cnt"):      cntFileLst.append(pathFile)
+            elif file.startswith("phr.tgt"):  tgtPhrFileLst.append(pathFile)
+            elif file.startswith("phr."):     
+                phrFileLst.append(pathFile)
+                lexicalizedReorderingFlag = True
+            else: fileLst.append(pathFile)
+    
     outFile1 = outDir + 'rules_cnt_align.out'
     outFile2 = outDir + 'rules_cnt_lprob.out'
     tgtFile = outDir + 'tgt_rules.all.out'
-    if lexicalizedReorderingFlag: 
-        phrFile = outDir + 'phr_lrm.all.out'
+    if lexicalizedReorderingFlag:
+        mergeCounts(cntFileLst, outDir + 'cnt.all.out') 
+        tgtPhrFile = outDir + 'tgt_phr.all.out'
+        mergeTgtPhrCounts(tgtPhrFileLst, tgtPhrFile)
+        phrFile = outDir + 'phr_cnt.all.out'
         mergePhrCounts(phrFileLst, phrFile)
 
     mergeTgtCounts(tgtFileLst, tgtFile)
