@@ -774,7 +774,7 @@ if __name__ == '__main__':
     optparser.add_option("", "--totSrcTrms", dest="tot_src_terms", default=7, type="int", help="maximum number of terms in src side of rules (default=7)")
     optparser.add_option("", "--maxNonTrms", dest="max_non_term", default=2, type="int", help="maximum number of non-terminals in rules (default=2)")
     (opts, _) = optparser.parse_args()
-
+    
     if opts.log_file:
         logging.basicConfig(filename=opts.log_file, filemode='w', level=logging.INFO)
 

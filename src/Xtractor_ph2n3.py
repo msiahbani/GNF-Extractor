@@ -166,7 +166,7 @@ def writePhrLRM(phrFile, tempPhrFile, tempCntFile):
         totPhrCnt = sum(totOrientation[0:3])
         l2r = ' '.join( map(lambda x: str(x), totOrientation[:3]))
         r2l = ' '.join( map(lambda x: str(x), totOrientation[3:]))
-        cntFile.write( "%g ||| %s ||| %s\n" % (totPhrCnt, l2r, r2l) )
+        cntFile.write( "%s ||| %s ||| %s\n" % (str(totPhrCnt), l2r, r2l) )
     finally:
         phrFile.close()
         outFile.close()

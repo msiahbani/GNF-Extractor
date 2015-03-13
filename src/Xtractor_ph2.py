@@ -491,12 +491,13 @@ def mergeCounts(fileLst, cntFile):
                L2R[i] += float(c)
             for i, c in enumerate(r2l.split()):
                R2L[i] += float(c)
-    assert (sum(L2R) == totCnt and sum(R2L) == totCnt), "phrase counts are not compatible"
+    totCnt = sum(R2L)
+    #assert (sum(L2R) == totCnt and sum(R2L) == totCnt), ("phrase counts are not compatible, %d != %d" %(totCnt, sum(L2R)))
 
     
     l2r = ' '.join( map(lambda x: str(x), L2R))
     r2l = ' '.join( map(lambda x: str(x), R2L))
-    oF.write( "%g ||| %s ||| %s\n" % (totCnt, l2r, r2l) )
+    oF.write( "%s ||| %s ||| %s\n" % (str(totCnt), l2r, r2l) )
 
 def main():
 
