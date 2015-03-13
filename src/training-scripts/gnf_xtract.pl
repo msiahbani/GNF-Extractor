@@ -200,6 +200,7 @@ sub step_1 {
 # Step-2: Filter the generated SCFG rules for a given tuning/test set and consolidate their counts; also compute forward & reverse lexical probs #
 sub step_2 {
     my $set = shift;
+    my $max_phr_len   = $cfg->{max_phr_len};
     #$ph2a_scr =~ s/phase2/$set.phase2/;
     @idx_submitted = ();
     safeSystem("mkdir $rules_dir/$currset-temp");
