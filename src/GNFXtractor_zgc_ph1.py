@@ -181,7 +181,7 @@ def readSentAlign():
             for rule in sorted( LRMDictL2R.iterkeys() ):
                 l2r = ' '.join( map( lambda x: str(LRMDictL2R[rule][x]), range(3) ) )
                 r2l = ' '.join( map( lambda x: str(LRMDictR2L[rule][x]), range(3) ) )
-                lrmF.write( "%s ||| %s ||| %s ||| %s\n" % (rule[0], rule[1], l2r, r2l) )
+                lrmF.write( "%s ||| %s ||| %s\n" % (rule, l2r, r2l) )
         with open(outLRMTgtFile, 'w') as lrmTF:
             for tgt in sorted( tgtPhrCntDict.iterkeys() ):
                 #tgtCnt = sum( map( lambda x: tgtPhrCntDict[tgt][x], range(3) ) )
@@ -627,13 +627,14 @@ def updateLRMFeat():
             if s_tok != "NON_TOK": srcLst.append(srcWrds[int(s_tok)])
             else: srcLst.append(s_tok)
         srcPhr = " ".join(srcLst)
-        if (srcPhr, tgtPhr) not in LRMDictL2R:
-            LRMDictL2R[(srcPhr, tgtPhr)] = {0:0, 1:0, 2:0}
-            LRMDictR2L[(srcPhr, tgtPhr)] = {0:0, 1:0, 2:0}
+        phr = srcPhr + " ||| " + tgtPhr
+        if phr not in LRMDictL2R:
+            LRMDictL2R[phr] = {0:0, 1:0, 2:0}
+            LRMDictR2L[phr] = {0:0, 1:0, 2:0}
         if tgtPhr not in tgtPhrCntDict: tgtPhrCntDict[tgtPhr] = {0:0, 1:0, 2:0, 3:0, 4:0, 5:0}
-        for k in LRMDictL2R[(srcPhr, tgtPhr)]:
-            LRMDictL2R[(srcPhr, tgtPhr)][k] += phrDictL2R[(src, tgt)].get(k, 0)
-            LRMDictR2L[(srcPhr, tgtPhr)][k] += phrDictR2L[(src, tgt)].get(k, 0)
+        for k in LRMDictL2R[phr]:
+            LRMDictL2R[phr][k] += phrDictL2R[(src, tgt)].get(k, 0)
+            LRMDictR2L[phr][k] += phrDictR2L[(src, tgt)].get(k, 0)
             # update the tgt count
             tgtPhrCntDict[tgtPhr][k] += phrDictL2R[(src, tgt)].get(k, 0)
             tgtPhrCntDict[tgtPhr][k+3] += phrDictR2L[(src, tgt)].get(k, 0)

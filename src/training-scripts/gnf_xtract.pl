@@ -279,7 +279,8 @@ sub step_4 {
     @idx_submitted = ();
 
     my $py_scrpt = "$cfg->{KRIYA_DEC}/pre-process/sufTreeFilter.py";
-    my $ph4b_cmd = "$Python $py_scrpt \$k $rules_dir/$currset-filtered/rules_cnt.final.out $sent_dir $filt_rules_dir $fr_terms";
+    #my $ph4b_cmd = "$Python $py_scrpt \$k $rules_dir/$currset-filtered/rules_cnt.final.out $sent_dir $filt_rules_dir $fr_terms";
+    my $ph4b_cmd = "$Python $py_scrpt -p \$k --rulefile $rules_dir/$currset-filtered/rules_cnt.final.out --sentdir $sent_dir --outdir $filt_rules_dir --totSrcTrms $fr_terms --lrmfile $rules_dir/$currset-filtered/phr_lprob.all.out";
     writeCmd2File($ph4b_scr, $ph4b_cmd);
 
     for (my $i=1; $i<=$set_parts; $i++) {

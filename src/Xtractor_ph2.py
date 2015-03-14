@@ -360,7 +360,7 @@ def mergePhrCounts(fileLst, phrFile):
             (src, tgt, l2r_cnt, r2l_cnt) = line.split(' ||| ')
             l2r = [float(i) for i in l2r_cnt.strip().split()]
             r2l = [float(i) for i in r2l_cnt.strip().split()]
-            phr = " ||| ".join([src, tgt])   
+            phr = src + ' ||| ' + tgt
             if phr in phrDict:
                 for indx1, cand in enumerate( candLst ):
                     if cand[0] == phr:
@@ -374,7 +374,6 @@ def mergePhrCounts(fileLst, phrFile):
                 candLst.append( (phr, l2r, r2l, [indx]) )
 
         if len(candLst) == 0: continue
-
         heapq.heapify(candLst)
         (phr, l2r, r2l, indxLst) = heapq.heappop(candLst)
         ## double check counts

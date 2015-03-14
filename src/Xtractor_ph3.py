@@ -251,7 +251,28 @@ def computeFinalLRM(cntFile, phrFile, outFile):
 	    t_beg = time.time()
 
     # flush the final phrase after the last line is read
-    flush2File(src_cnt, oF)
+    s_l2r = [0.0, 0.0, 0.0]
+    s_r2l = [0.0, 0.0, 0.0]
+    for (src, tgt, cnt, l2r, r2l) in phrLst:
+        for i in range(3): 
+            s_l2r[i] += l2r[i]
+            s_r2l[i] += r2l[i]
+
+    ps_l2r = [ (s_l2r[i] + alpha_g*prob_l2r[i])/(src_cnt+alpha_g) for i in range(3) ]
+    ps_r2l = [ (s_r2l[i] + alpha_g*prob_r2l[i])/(src_cnt+alpha_g) for i in range(3) ]
+    for (src, tgt, cnt, l2r, r2l) in phrLst:
+        (t_cnt, t_l2r, t_r2l) = tgtPhrDict[tgt]
+        p_l2r = []
+        p_r2l = []
+        for i in range(3):
+            pt_l2r = (t_l2r[i] + alpha_g*prob_l2r[i])/(t_cnt+alpha_g)
+            pt_r2l = (t_r2l[i] + alpha_g*prob_r2l[i])/(t_cnt+alpha_g)
+
+            p_l2r.append( math.log((l2r[i] + alpha_s*ps_l2r[i] + alpha_t*pt_l2r)/(cnt + alpha_s + alpha_t)) )
+            p_r2l.append( math.log((r2l[i] + alpha_s*ps_r2l[i] + alpha_t*pt_r2l)/(cnt + alpha_s + alpha_t)) )
+                
+        oF.write( "%s ||| %s ||| %g %g %g ||| %g %g %g\n" % (src, tgt, p_l2r[0], p_l2r[1], p_l2r[2], p_r2l[0], p_r2l[1], p_r2l[2]) )
+
 
     rF.close()
     oF.close()
