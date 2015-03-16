@@ -7,6 +7,7 @@ import heapq
 import math
 import time
 from datetime import timedelta
+from random import randint
 
 #min_lprob = -6.0           # for log10
 #max_lprob = -0.000434
@@ -224,7 +225,21 @@ def computeFinalLRM(cntFile, phrFile, outFile):
             ps_l2r = [ (s_l2r[i] + alpha_g*prob_l2r[i])/(src_cnt+alpha_g) for i in range(3) ]
             ps_r2l = [ (s_r2l[i] + alpha_g*prob_r2l[i])/(src_cnt+alpha_g) for i in range(3) ]
             for (src, tgt, cnt, l2r, r2l) in phrLst:
-                (t_cnt, t_l2r, t_r2l) = tgtPhrDict[tgt]
+                try:
+                    (t_cnt, t_l2r, t_r2l) = tgtPhrDict[tgt]
+                except:
+                    t_cnt = cnt
+                    rand = randint(1,10)
+                    if rand < 3:
+                        t_l2r = (cnt, 0.0, 0.0)
+                        t_r2l = (cnt, 0.0, 0.0)
+                    if rand == 3: 
+                        t_l2r = (0.0, cnt, 0.0)
+                        t_r2l = (0.0, cnt, 0.0)
+                    else:
+                        t_l2r = (0.0, 0.0, cnt)
+                        t_r2l = (0.0, 0.0, cnt)
+                    print tgt, "|||", (t_cnt, t_l2r, t_r2l)
                 p_l2r = []
                 p_r2l = []
                 for i in range(3):
