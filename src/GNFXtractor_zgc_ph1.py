@@ -99,7 +99,8 @@ def readSentAlign():
                     revAlignDoD[m[1]][m[0]] = 1
         elif line.startswith('LOG: PHRASES_BEGIN:'): continue
         elif line.startswith('LOG: PHRASES_END:'):    # End of the current sentence; now extract rules from it
-            align_tree = zgc(opts.max_phr_len)
+            #align_tree = zgc(opts.max_phr_len)                                          ## commented to test LRM
+            align_tree = zgc(srcSentlen)                                                 ## test LRM
             phrPairLst = align_tree.getAlignTree(srcSentlen, tgtSentLen, aTupLst)
             fullPhrPairLst = addLoosePhrases(phrPairLst)
             if not opts.tight_phrases_only: phrPairLst = fullPhrPairLst
@@ -110,6 +111,7 @@ def readSentAlign():
             nonTermRuleDoD = {}
             strPhrDict = {}
             for ppair in phrPairLst:
+                if (ppair[0][1] - ppair[0][0] > opts.max_phr_len) or (ppair[1][1] - ppair[1][0] > opts.max_phr_len): continue    ## test LRM
                 unaligned_edge = False
                 # If the boundary term of source or target phrase has an unaligned word, ignore the phrase-pair
                 # Unless the tight-phrase options is set to False
@@ -209,7 +211,7 @@ def addLoosePhrases(phr_lst):
                         if alignDict[st_ind].has_key(str(j)): break                 #boundary reaches an aligned words 
                         if p_ind == 0: new_phr = (j, ppair[st_ind][1])
                         elif p_ind == 1: new_phr = (ppair[st_ind][0], j)
-                        if abs(new_phr[1] - new_phr[0]) > opts.max_phr_len: break   #length of the new phrase gets larger than max_phr_len
+                        #if abs(new_phr[1] - new_phr[0]) > opts.max_phr_len: break   #length of the new phrase gets larger than max_phr_len
                         if st_ind == 0: new_ppair = (new_phr, ppair[1])
                         elif st_ind == 1: new_ppair = (ppair[0], new_phr)
                         new_lst.add(new_ppair)
@@ -222,9 +224,10 @@ def addLoosePhrases(phr_lst):
     fullTgtPhraseDoD[(-1,-1)] = (-1,-1)     ## <s>
     fullTgtPhraseDoD[(tgtSentLen,tgtSentLen)] = (srcSentlen,srcSentlen)     ## <\s>
     for ppair in full_phr_lst:
-        if ppair not in fullTgtPhraseDoD:
+        if ppair[1] not in fullTgtPhraseDoD:
             fullTgtPhraseDoD[ppair[1]]={}
-        fullTgtPhraseDoD[ppair[1]][ppair[1]] = 1
+        fullTgtPhraseDoD[ppair[1]][ppair[0]] = 1
+    
     return list(full_phr_lst)
                         
 def resetStructs():
@@ -384,7 +387,7 @@ def checkRuleConfigure((src_phr, tgt_phr), isNonTerm=False):
     max_x = findMaxNonTerm(src_phr)
     if max_x > opts.max_non_term:  return False 
     if src_len - max_x > max_terms: return False
-    if len(tgt_phr.split()) - max_x > max_terms+3: return False
+    if len(tgt_phr.split()) - max_x > max_terms: return False
     pre_x = False
     
     #check adjacent non-terms on src
@@ -584,6 +587,11 @@ def compLRMFeature(rule):
     prev_t = tgtPosLst[0] - 1
     l2r = {}
     while prev_t > -1:
+        '''if srcPosLst[0] == 14 and srcPosLst[-1] == 19:
+            print (prev_t, tgtPosLst[0]-1), ((prev_t, tgtPosLst[0]-1) in fullTgtPhraseDoD)
+            if (prev_t, tgtPosLst[0]-1) in fullTgtPhraseDoD:
+                for src in fullTgtPhraseDoD[(prev_t, tgtPosLst[0]-1)]:
+                    print src'''
         if (prev_t, tgtPosLst[0]-1) in fullTgtPhraseDoD:
             for src in fullTgtPhraseDoD[(prev_t, tgtPosLst[0]-1)]:
                 if src[1] == srcPosLst[0]-1:        ## Monotone

@@ -103,16 +103,20 @@ def processPhrases(inFile):
 def writePhrLRM(phrFile, filteredPhrFile):
     '''write the filtered phrases'''
 
+    print "Filtering rules from file %s into %s" %(phrFile, filteredPhrFile)
     global lrmDict
     phrFile = open(phrFile, "r")
     outFile = open(filteredPhrFile, 'w')
+    phr_no = 0
     try:
         for line in phrFile:
             line = line.strip()
             (src, tgt, _) = line.split(' ||| ', 2)
             if src in lrmDict:
                 outFile.write( "%s\n" % (line) )
+                phr_no += 1
     finally:
+        print "Unique phrases processed : %4d" % (phr_no)
         phrFile.close()
         outFile.close()
 
@@ -207,7 +211,7 @@ if __name__ == "__main__":
     opts.lex_reorder_model = False
     if opts.lrmfile != None:
         opts.lex_reorder_model = True
-
+    
     if opts.log_file:
         logging.basicConfig(filename=opts.log_file, filemode='w', level=logging.INFO)
 

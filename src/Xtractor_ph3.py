@@ -139,7 +139,8 @@ def flush2File(src_cnt, oF):
             assert (r_lp < 0.0), "ERROR: *4 - Log-prob value for reverse lexical prob is Positive : %g. Exiting!!\n" % (r_lp)
 
         # Write the features to the file
-        oF.write( "%s ||| %s ||| %g %g %g %g\n" % (src, tgt, r_p, f_p, r_lp, f_lp) )
+        #oF.write( "%s ||| %s ||| %g %g %g %g\n" % (src, tgt, r_p, f_p, r_lp, f_lp) )
+        oF.write( "%s ||| %s ||| %g %g %g %g\n" % (src, tgt, f_p, f_lp, r_p, r_lp) )
 
 def loadTgtPhr(tgtPhrFile):
     '''Loads target phrase counts in a dict'''
@@ -295,6 +296,50 @@ def computeFinalLRM(cntFile, phrFile, outFile):
     print "Total # of unique phrases processed   : %d" % tot_phr
     print "Total time taken                    : %f" % tot_time
 
+def computeFinalLRMNoSmoothing(phrFile, outFile):
+
+    global tgtPhrDict
+    tot_phr = 0
+    tot_time = 0.0
+    prev_src = ''
+    src_cnt = 0.0
+    phrLst = []
+    alpha_u = 10.0
+    alpha_g = 10.0
+    alpha_s = 10.0
+    alpha_t = 10.0
+
+    print "\n\nComputing source cnt and feature values before writing them to file ..."
+    rF = open(phrFile, 'r')
+    oF = open(outFile, 'w')
+    t_beg = time.time()
+    while True:
+        line = rF.readline()
+        line = line.strip()
+        if line == '': break
+
+        tot_phr += 1
+        (src_phr, tgt_phr, cur_l2r, cur_r2l) = line.split(' ||| ')
+        cur_l2r = [float(x) for x in cur_l2r.split()]
+        cur_r2l = [float(x) for x in cur_r2l.split()]
+        cur_cnt = sum(cur_l2r)
+        for i in range(3): cur_l2r[i] = cur_l2r[i]/cur_cnt
+        for i in range(3): cur_r2l[i] = cur_r2l[i]/cur_cnt
+        oF.write( "%s ||| %s ||| %g %g %g %g %g %g\n" % (src_phr, tgt_phr, cur_l2r[0], cur_l2r[1], cur_l2r[2], cur_r2l[0], cur_r2l[1], cur_r2l[2]) )
+
+        # tracking progress (for every million phrases)
+        if (tot_phr % 1000000) == 0:
+	    t_taken = time.time() - t_beg
+            tot_time += t_taken
+            print "Processed %d million phrases in %.4f sec" % (tot_phr / 1000000, t_taken)
+	    t_beg = time.time()
+
+    rF.close()
+    oF.close()
+    tot_time += time.time() - t_beg
+    print "Total # of unique phrases processed   : %d" % tot_phr
+    print "Total time taken                      : %f" % tot_time
+
 
 def main():
     ruleFile = sys.argv[1]
@@ -314,6 +359,7 @@ def main():
         tgtPhrFile = ruleDir + "/tgt_phr.all.out"
         lrmFile = ruleDir + "/phr_lprob.all.out"
         loadTgtPhr(tgtPhrFile)
+        #computeFinalLRMNoSmoothing(phrFile, lrmFile)
         computeFinalLRM(cntFile, phrFile, lrmFile)
 
 if __name__ == '__main__':
