@@ -61,6 +61,10 @@ def readSentAlign():
     sent_count = 0
     phrLst = []
     aTupLst = []
+    max_s_alg = -1
+    min_s_alg = 1000
+    max_t_alg = -1
+    min_t_alg = 1000
 
     print "Using the maximum phrase lenght            :", opts.max_phr_len
     print "Enforcing tight phrase-pairs constraint    :", opts.tight_phrases_only
@@ -97,15 +101,19 @@ def readSentAlign():
                 except KeyError:
                     revAlignDoD[m[1]] = {}
                     revAlignDoD[m[1]][m[0]] = 1
+                if e > max_s_alg: max_s_alg = e
+                if e!= -1 and e < min_s_alg: min_s_alg = e
+                if f > max_t_alg: max_t_alg = f
+                if f!= -1 and f < min_t_alg: min_t_alg = f
         elif line.startswith('LOG: PHRASES_BEGIN:'): continue
         elif line.startswith('LOG: PHRASES_END:'):    # End of the current sentence; now extract rules from it
-            #align_tree = zgc(opts.max_phr_len)                                          ## commented to test LRM
-            align_tree = zgc(srcSentlen)                                                 ## test LRM
+            align_tree = zgc(opts.max_phr_len)                                          ## commented to test LRM
+            #align_tree = zgc(srcSentlen)                                                 ## test LRM
             phrPairLst = align_tree.getAlignTree(srcSentlen, tgtSentLen, aTupLst)
+            if opts.max_phr_len >= srcSentlen and not ((min_s_alg, max_s_alg),(min_t_alg, max_t_alg)) in phrPairLst:
+                phrPairLst.append(((min_s_alg, max_s_alg),(min_t_alg, max_t_alg)))
             fullPhrPairLst = addLoosePhrases(phrPairLst)
             if not opts.tight_phrases_only: phrPairLst = fullPhrPairLst
-            if opts.max_phr_len >= srcSentlen and not ((0, srcSentlen-1),(0, tgtSentLen-1)) in phrPairLst:
-                phrPairLst.append(((0, srcSentlen-1),(0, tgtSentLen-1)))
             sentInitDoD = {}
             tgtPhraseDict = {}
             nonTermRuleDoD = {}
@@ -211,7 +219,7 @@ def addLoosePhrases(phr_lst):
                         if alignDict[st_ind].has_key(str(j)): break                 #boundary reaches an aligned words 
                         if p_ind == 0: new_phr = (j, ppair[st_ind][1])
                         elif p_ind == 1: new_phr = (ppair[st_ind][0], j)
-                        #if abs(new_phr[1] - new_phr[0]) > opts.max_phr_len: break   #length of the new phrase gets larger than max_phr_len
+                        if abs(new_phr[1] - new_phr[0]) > opts.max_phr_len: break   #length of the new phrase gets larger than max_phr_len
                         if st_ind == 0: new_ppair = (new_phr, ppair[1])
                         elif st_ind == 1: new_ppair = (ppair[0], new_phr)
                         new_lst.add(new_ppair)
