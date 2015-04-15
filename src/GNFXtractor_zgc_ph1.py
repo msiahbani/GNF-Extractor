@@ -165,6 +165,10 @@ def readSentAlign():
             if opts.lex_reorder_model:    updateLRMFeat()
             # Clear the variables at the end of current sentence
             resetStructs()
+            max_s_alg = -1
+            min_s_alg = 1000
+            max_t_alg = -1
+            min_t_alg = 1000
             del aTupLst[:]
             sent_count += 1
             if sent_count % 1000 == 0:
